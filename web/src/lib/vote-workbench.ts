@@ -5,6 +5,7 @@ export const VOTE_API_ORIGIN = "https://image.vote520.com";
 export const VOTE_IMAGE_MODEL = "gpt-image-2";
 export const VOTE_CHANNEL_ID = "vote-image";
 export const VOTE_MODEL_VALUE = `${VOTE_CHANNEL_ID}::${VOTE_IMAGE_MODEL}`;
+export const VOTE_DATA_NOTICE_STORAGE_KEY = "infinite-canvas:vote-data-notice:v1";
 const EMBEDDED_SESSION_KEY = "vote-canvas:embedded";
 
 export function isEmbeddedWorkbench() {
@@ -14,12 +15,12 @@ export function isEmbeddedWorkbench() {
 }
 
 export function normalizeVoteWorkbenchConfig(config: AiConfig): AiConfig {
-    const existing = config.channels.find((channel) => channel.id === VOTE_CHANNEL_ID) || config.channels[0];
+    const existing = config.channels.find((channel) => channel.id === VOTE_CHANNEL_ID);
     const channel: ModelChannel = {
         id: VOTE_CHANNEL_ID,
         name: "Vote Image",
         baseUrl: VOTE_API_ORIGIN,
-        apiKey: existing?.apiKey || config.apiKey || "",
+        apiKey: existing?.apiKey || "",
         apiFormat: "openai",
         models: [{ name: VOTE_IMAGE_MODEL, capability: "image" }],
     };
@@ -28,6 +29,7 @@ export function normalizeVoteWorkbenchConfig(config: AiConfig): AiConfig {
         channelMode: "local",
         baseUrl: VOTE_API_ORIGIN,
         apiKey: channel.apiKey,
+        voteImageKeyVerified: Boolean(channel.apiKey && config.voteImageKeyVerified),
         apiFormat: "openai",
         channels: [channel],
         model: VOTE_MODEL_VALUE,
@@ -46,6 +48,7 @@ export function configWithoutApiKey(config: AiConfig): AiConfig {
     return {
         ...config,
         apiKey: "",
+        voteImageKeyVerified: false,
         channels: config.channels.map((channel) => ({ ...channel, apiKey: "" })),
     };
 }

@@ -29,6 +29,7 @@ export type AiConfig = {
     channelMode: "remote" | "local";
     baseUrl: string;
     apiKey: string;
+    voteImageKeyVerified: boolean;
     apiFormat: ApiCallFormat;
     channels: ModelChannel[];
     model: string;
@@ -73,6 +74,7 @@ export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: OPENAI_BASE_URL,
     apiKey: "",
+    voteImageKeyVerified: false,
     apiFormat: "openai",
     channels: [
         {
@@ -81,9 +83,7 @@ export const defaultConfig: AiConfig = {
             baseUrl: OPENAI_BASE_URL,
             apiKey: "",
             apiFormat: "openai",
-            models: [
-                { name: VOTE_IMAGE_MODEL, capability: "image" },
-            ],
+            models: [{ name: VOTE_IMAGE_MODEL, capability: "image" }],
         },
     ],
     model: VOTE_MODEL_VALUE,
@@ -181,7 +181,7 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const channel = resolveModelChannel(config, model);
-    return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
+    return Boolean(config.voteImageKeyVerified && model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
 export const useConfigStore = create<ConfigStore>()(
@@ -330,7 +330,18 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     const model = decoded?.model || value;
     const matched = decoded ? config.channels.find((channel) => channel.id === decoded.channelId) : config.channels.find((channel) => channel.models.some((item) => item.name === model));
-    return matched || config.channels[0] || createModelChannel({ id: "default", name: i18n.t("config.channels.defaultName"), baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
+    return (
+        matched ||
+        config.channels[0] ||
+        createModelChannel({
+            id: "default",
+            name: i18n.t("config.channels.defaultName"),
+            baseUrl: config.baseUrl,
+            apiKey: config.apiKey,
+            apiFormat: config.apiFormat,
+            models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })),
+        })
+    );
 }
 
 export function resolveModelRequestConfig(config: AiConfig, _value: string) {

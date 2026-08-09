@@ -41,11 +41,9 @@ type TaskRequestOptions = {
     context?: Sub2ApiImageTaskContext;
 };
 
-export type VoteImageConnectionFailureReason = "authentication_failed" | "model_unavailable" | "service_unavailable";
+export type VoteImageConnectionFailureReason = "authentication_failed" | "group_not_image_only" | "service_unavailable";
 
-export type VoteImageConnectionResult =
-    | { ok: true }
-    | { ok: false; reason: VoteImageConnectionFailureReason };
+export type VoteImageConnectionResult = { ok: true } | { ok: false; reason: VoteImageConnectionFailureReason };
 
 export function isVoteImageGateway(config: Pick<AiConfig, "baseUrl">) {
     try {
@@ -61,8 +59,9 @@ export async function validateVoteImageConnection(apiKey: string): Promise<VoteI
             headers: { Authorization: `Bearer ${apiKey}` },
             timeout: 15_000,
         });
-        const hasRequiredModel = (response.data.data || []).some((model) => model.id === VOTE_IMAGE_MODEL);
-        return hasRequiredModel ? { ok: true } : { ok: false, reason: "model_unavailable" };
+        const models = new Set((response.data.data || []).map((model) => model.id?.trim()).filter((id): id is string => Boolean(id)));
+        const isImageOnlyGroup = models.size === 1 && models.has(VOTE_IMAGE_MODEL);
+        return isImageOnlyGroup ? { ok: true } : { ok: false, reason: "group_not_image_only" };
     } catch (error) {
         if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
             return { ok: false, reason: "authentication_failed" };
