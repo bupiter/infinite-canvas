@@ -24,7 +24,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
 
     return (
-        <div className="absolute bottom-5 left-5 z-50" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+        <div className="absolute bottom-20 left-3 z-50 sm:bottom-5 sm:left-5" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
             <div className="flex h-14 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur" style={dockStyle}>
                 <Tooltip title={isMiniMapOpen ? t("canvas.miniMapClose") : t("canvas.miniMapOpen")}>
                     <Button
@@ -46,18 +46,20 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
                         max="500"
                         step="1"
                         value={Math.round(scale * 100)}
-                        className="w-24"
+                        className="hidden w-24 sm:block"
                         style={{ accentColor: theme.node.activeStroke }}
                         onChange={(event) => onScaleChange(Number(event.target.value) / 100)}
                         aria-label={t("canvas.zoom")}
                     />
                 </Tooltip>
-                <span className="w-10 text-right text-xs tabular-nums" style={{ color: theme.node.muted }}>
+                <span className="hidden w-10 text-right text-xs tabular-nums sm:block" style={{ color: theme.node.muted }}>
                     {Math.round(scale * 100)}%
                 </span>
-                <Tooltip title={t("canvas.shortcuts")}>
-                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0" style={shortcutsOpen ? activeStyle : { color: theme.toolbar.item }} icon={<HelpCircle className="size-4" />} onClick={() => setShortcutsOpen(true)} aria-label={t("canvas.shortcuts")} />
-                </Tooltip>
+                <span className="hidden sm:inline-flex">
+                    <Tooltip title={t("canvas.shortcuts")}>
+                        <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0" style={shortcutsOpen ? activeStyle : { color: theme.toolbar.item }} icon={<HelpCircle className="size-4" />} onClick={() => setShortcutsOpen(true)} aria-label={t("canvas.shortcuts")} />
+                    </Tooltip>
+                </span>
             </div>
             <Modal title={t("canvas.shortcuts")} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
                 <div className="space-y-3 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>

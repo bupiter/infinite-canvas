@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [panel, query, startup, configFile, html, server, imageTasks, imageStorage, imageTools, nginx, nginxHeaders, dockerfile, prebuiltDockerfile, compose, entrypoint] = await Promise.all([
+const [panel, query, startup, configFile, html, server, imageTasks, imageStorage, imageTools, canvasPage, sidePanel, toolbar, zoomControls, userActions, nginx, nginxHeaders, dockerfile, prebuiltDockerfile, compose, entrypoint] = await Promise.all([
     read("src/components/layout/vote-workbench-config-panel.tsx"),
     read("src/lib/vote-workbench.ts"),
     read("src/main.tsx"),
@@ -11,6 +11,11 @@ const [panel, query, startup, configFile, html, server, imageTasks, imageStorage
     read("src/services/api/sub2api-image-task.ts"),
     read("src/services/image-storage.ts"),
     read("src/components/canvas/canvas-image-toolbar-tools.tsx"),
+    read("src/pages/canvas/project.tsx"),
+    read("src/components/canvas/canvas-side-panel.tsx"),
+    read("src/components/canvas/canvas-toolbar.tsx"),
+    read("src/components/canvas/canvas-zoom-controls.tsx"),
+    read("src/components/layout/user-status-actions.tsx"),
     read("../nginx.conf"),
     read("../nginx-security-headers.conf"),
     read("../Dockerfile"),
@@ -54,5 +59,12 @@ assert(imageTasks.includes('operation: path === "/images/edits/async" ? "edit" :
 assert(!/payload\.status !== "completed"[\s\S]{0,160}removeTask\(task\.id\)/.test(imageTasks), "completed tasks must not be removed before image persistence");
 assert(imageStorage.includes("acknowledgeSub2ApiImageSource(input)"), "successful IndexedDB persistence must acknowledge the completed task");
 assert(imageTools.includes('!VOTE_WORKBENCH || tool.id !== "maskEdit"'), "unsupported mask editing must remain hidden in Vote mode");
+assert(canvasPage.includes('className="relative flex h-full min-h-0 overflow-hidden"'), "canvas layout must anchor the mobile overlay panel");
+assert(sidePanel.includes("absolute inset-y-0 left-0") && sidePanel.includes("sm:relative"), "the side panel must overlay rather than squeeze the mobile canvas");
+assert(sidePanel.includes("border-r pt-16 sm:pt-0"), "the mobile overlay panel must not overlap the canvas top bar");
+assert(toolbar.includes("left-3 right-3") && toolbar.includes("sm:left-[300px]"), "the mobile canvas toolbar must stay inside the viewport");
+assert(zoomControls.includes("bottom-20 left-3") && zoomControls.includes("hidden w-24 sm:block"), "mobile zoom controls must not overlap the primary toolbar");
+assert(userActions.includes('variant === "canvas" ? "hidden sm:inline-flex"'), "secondary canvas actions must collapse on mobile");
+assert(userActions.includes("cn(naturalIconClass, secondaryCanvasActionClass)"), "mobile visibility utilities must override the base inline-flex class");
 
 console.log("Vote workbench security guard passed");

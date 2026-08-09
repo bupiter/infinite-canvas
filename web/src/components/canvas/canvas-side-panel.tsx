@@ -85,14 +85,14 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
 
     return (
         <motion.div
-            className="relative z-[60] flex h-full shrink-0"
+            className="absolute inset-y-0 left-0 z-40 flex h-full shrink-0 sm:relative sm:z-[60]"
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
             style={{ overflow: "clip", pointerEvents: panelClosing ? "none" : undefined }}
         >
             <motion.aside
-                className="relative flex h-full shrink-0 flex-col overflow-hidden border-r"
+                className="relative flex h-full shrink-0 flex-col overflow-hidden border-r pt-16 sm:pt-0"
                 initial={{ x: -48 }}
                 animate={{ x: panelClosing ? -28 : 0 }}
                 transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
