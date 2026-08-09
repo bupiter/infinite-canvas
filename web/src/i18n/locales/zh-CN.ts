@@ -619,6 +619,7 @@ export default {
         firstUseLocalData: "画布、图片和 API Key 主要保存在当前浏览器，清除浏览器数据后可能无法恢复。",
         firstUseTask: "关闭页面不会取消已经提交的生图任务。",
         firstUseBilling: "成功生成会按当前生图分组规则扣费。",
+        firstUsePolicy: "禁止提交违法内容或明显协助滥用的请求。",
         firstUseAccept: "同意并验证连接",
         clearKey: "清除 Key",
         keyCleared: "API Key 已从当前浏览器清除",

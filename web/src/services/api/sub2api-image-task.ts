@@ -9,6 +9,8 @@ export const VOTE_IMAGE_MODEL = "gpt-image-2";
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const MAX_POLL_DURATION_MS = 30 * 60 * 1000;
 const taskStore = localforage.createInstance({ name: "infinite-canvas", storeName: "sub2api_image_tasks" });
+const completedTaskSources = new Map<string, Set<string>>();
+const completedSourceTasks = new Map<string, string>();
 
 export type Sub2ApiImageTaskContext = {
     surface: "canvas" | "image-workbench";
@@ -21,6 +23,7 @@ export type StoredSub2ApiImageTask = {
     id: string;
     baseUrl: string;
     model: typeof VOTE_IMAGE_MODEL;
+    operation?: "generation" | "edit";
     keyFingerprint: string;
     createdAt: number;
     context?: Sub2ApiImageTaskContext;
@@ -85,6 +88,7 @@ export async function requestSub2ApiImageTask(config: AiConfig, path: "/images/g
         id: taskId,
         baseUrl: VOTE_IMAGE_API_ORIGIN,
         model: VOTE_IMAGE_MODEL,
+        operation: path === "/images/edits/async" ? "edit" : "generation",
         keyFingerprint: await fingerprintApiKey(config.apiKey),
         createdAt: Date.now(),
         context: options?.context,
@@ -109,6 +113,17 @@ export async function listPendingSub2ApiImageTasks(config: AiConfig) {
         return [];
     }
     return tasks.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function acknowledgeSub2ApiImageSource(source: string) {
+    const taskId = completedSourceTasks.get(source);
+    if (!taskId) return;
+    completedSourceTasks.delete(source);
+    const remaining = completedTaskSources.get(taskId);
+    remaining?.delete(source);
+    if (remaining?.size) return;
+    completedTaskSources.delete(taskId);
+    await removeTask(taskId);
 }
 
 async function waitForSub2ApiImageTask(config: AiConfig, task: StoredSub2ApiImageTask, pollIntervalMs: number, signal?: AbortSignal) {
@@ -145,11 +160,25 @@ async function waitForSub2ApiImageTask(config: AiConfig, task: StoredSub2ApiImag
             throw new Error(taskError(payload));
         }
         if (payload.status !== "completed") throw new Error("生图服务返回了未知任务状态");
-        await removeTask(task.id);
-        if (payload.result) return payload.result;
-        if (payload.image_url) return { data: [{ url: payload.image_url }] };
+        if (payload.result) {
+            rememberCompletedTaskSources(task.id, payload.result);
+            return payload.result;
+        }
+        if (payload.image_url) {
+            const result = { data: [{ url: payload.image_url }] };
+            rememberCompletedTaskSources(task.id, result);
+            return result;
+        }
         throw new Error("生图任务已完成，但没有返回图片");
     }
+}
+
+function rememberCompletedTaskSources(taskId: string, result: Record<string, unknown>) {
+    const data = Array.isArray(result.data) ? result.data : [];
+    const sources = new Set(data.flatMap((item) => (item && typeof item === "object" && typeof item.url === "string" && item.url ? [item.url] : [])));
+    if (!sources.size) return;
+    completedTaskSources.set(taskId, sources);
+    sources.forEach((source) => completedSourceTasks.set(source, taskId));
 }
 
 function retryAfterMs(value: unknown) {

@@ -56,6 +56,7 @@ export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneB
                     <li>{t("voteWorkbench.firstUseLocalData")}</li>
                     <li>{t("voteWorkbench.firstUseTask")}</li>
                     <li>{t("voteWorkbench.firstUseBilling")}</li>
+                    <li>{t("voteWorkbench.firstUsePolicy")}</li>
                 </ul>
             ),
             okText: t("voteWorkbench.firstUseAccept"),
@@ -105,7 +106,7 @@ export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneB
                     <KeyRound className="size-4" />
                     {t("voteWorkbench.keyTitle")}
                 </div>
-                <Input.Password value={draftApiKey} autoComplete="off" placeholder="sk-..." onChange={(event) => updateDraftApiKey(event.target.value)} />
+                <Input.Password visibilityToggle={false} value={draftApiKey} autoComplete="off" placeholder="sk-..." onChange={(event) => updateDraftApiKey(event.target.value)} />
                 <div className="mt-3 grid gap-2 text-xs text-stone-500 sm:grid-cols-2">
                     <div>
                         {t("voteWorkbench.apiLabel")}: {VOTE_API_ORIGIN}

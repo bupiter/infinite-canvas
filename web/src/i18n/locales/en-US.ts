@@ -619,6 +619,7 @@ export default {
         firstUseLocalData: "Canvases, images, and the API key are primarily stored in this browser and may be unrecoverable after browser data is cleared.",
         firstUseTask: "Closing the page does not cancel an image task that has already been submitted.",
         firstUseBilling: "Successful generations are billed according to the current image group rules.",
+        firstUsePolicy: "Do not submit illegal content or requests that clearly facilitate abuse.",
         firstUseAccept: "Accept and verify connection",
         clearKey: "Clear key",
         keyCleared: "The API key was removed from this browser",

@@ -6,4 +6,6 @@ services:
       dockerfile: Dockerfile.local
     ports:
       - "3000:3000"
+    environment:
+      VOTE_IMAGE_ASSET_ORIGIN: ${VOTE_IMAGE_ASSET_ORIGIN:-}
     restart: unless-stopped
