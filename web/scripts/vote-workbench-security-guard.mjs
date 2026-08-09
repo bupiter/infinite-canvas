@@ -30,6 +30,13 @@ const assert = (condition, message) => {
 
 assert(panel.includes("visibilityToggle={false}"), "API Key must never have a plaintext visibility toggle");
 assert(panel.includes("firstUsePolicy"), "first-use confirmation must include the abuse policy notice");
+assert(panel.includes("validationControllerRef.current?.abort()"), "changing or closing the Key form must cancel stale connection validation");
+assert(panel.includes('onChange={(event) => updateDraftApiKey(event.target.value)}'), "editing the Key must use the validation-cancelling update path");
+assert(
+    /if \(validationControllerRef\.current !== controller\) return;[\s\S]{0,240}setApiKey\(draftApiKey\.trim\(\), true\)/.test(panel),
+    "stale connection validation must not save an old API Key",
+);
+assert(imageTasks.includes("signal,"), "connection validation must pass AbortSignal to the gateway request");
 
 const queryKeys = [...query.matchAll(/params\.get\("([^"]+)"\)/g)].map((match) => match[1]);
 assert(queryKeys.includes("theme") && queryKeys.includes("lang"), "theme and lang query preferences must be supported");

@@ -56,10 +56,11 @@ export function isVoteImageGateway(config: Pick<AiConfig, "baseUrl">) {
     }
 }
 
-export async function validateVoteImageConnection(apiKey: string): Promise<VoteImageConnectionResult> {
+export async function validateVoteImageConnection(apiKey: string, signal?: AbortSignal): Promise<VoteImageConnectionResult> {
     try {
         const response = await axios.get<{ data?: Array<{ id?: string }> }>(buildApiUrl(VOTE_IMAGE_API_ORIGIN, "/models"), {
             headers: { Authorization: `Bearer ${apiKey}` },
+            signal,
             timeout: 15_000,
         });
         const models = new Set((response.data.data || []).map((model) => model.id?.trim()).filter((id): id is string => Boolean(id)));

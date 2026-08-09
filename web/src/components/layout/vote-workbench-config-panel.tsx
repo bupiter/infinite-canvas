@@ -1,6 +1,6 @@
 import { Alert, App, Button, Input, Modal } from "antd";
 import { KeyRound, ShieldCheck, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { clearVoteWorkbenchData } from "@/services/local-data-reset";
@@ -19,20 +19,36 @@ export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneB
     const apiKey = config.channels[0]?.apiKey || "";
     const [draftApiKey, setDraftApiKey] = useState(apiKey);
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
+    const validationControllerRef = useRef<AbortController | null>(null);
+
+    useEffect(
+        () => () => {
+            validationControllerRef.current?.abort();
+            validationControllerRef.current = null;
+        },
+        [],
+    );
 
     const setApiKey = (value: string, verified = false) => {
         useConfigStore.setState({ config: normalizeVoteWorkbenchConfig({ ...config, apiKey: value, voteImageKeyVerified: verified, channels: config.channels.map((channel) => ({ ...channel, apiKey: value })) }) });
     };
 
     const updateDraftApiKey = (value: string) => {
+        validationControllerRef.current?.abort();
+        validationControllerRef.current = null;
         setDraftApiKey(value);
         setConnectionStatus("idle");
         if (apiKey) setApiKey("");
     };
 
     const runConnectionValidation = async () => {
+        validationControllerRef.current?.abort();
+        const controller = new AbortController();
+        validationControllerRef.current = controller;
         setConnectionStatus("checking");
-        const result = await validateVoteImageConnection(draftApiKey.trim());
+        const result = await validateVoteImageConnection(draftApiKey.trim(), controller.signal);
+        if (validationControllerRef.current !== controller) return;
+        validationControllerRef.current = null;
         if (!result.ok) {
             setConnectionStatus(result.reason);
             return;
@@ -124,9 +140,7 @@ export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneB
                         danger
                         disabled={!draftApiKey}
                         onClick={() => {
-                            setDraftApiKey("");
-                            setApiKey("");
-                            setConnectionStatus("idle");
+                            updateDraftApiKey("");
                             message.success(t("voteWorkbench.keyCleared"));
                         }}
                     >
