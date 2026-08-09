@@ -1,11 +1,14 @@
 import { Alert, App, Button, Input, Modal } from "antd";
-import { KeyRound, Trash2 } from "lucide-react";
+import { KeyRound, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { clearVoteWorkbenchData } from "@/services/local-data-reset";
 import { useConfigStore } from "@/stores/use-config-store";
 import { normalizeVoteWorkbenchConfig, VOTE_API_ORIGIN, VOTE_IMAGE_MODEL } from "@/lib/vote-workbench";
+import { validateVoteImageConnection, type VoteImageConnectionFailureReason } from "@/services/api/sub2api-image-task";
+
+type ConnectionStatus = "idle" | "checking" | "success" | VoteImageConnectionFailureReason;
 
 export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneButton?: boolean }) {
     const { message } = App.useApp();
@@ -14,10 +17,40 @@ export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneB
     const setConfigDialogOpen = useConfigStore((state) => state.setConfigDialogOpen);
     const [clearing, setClearing] = useState(false);
     const apiKey = config.channels[0]?.apiKey || "";
+    const [draftApiKey, setDraftApiKey] = useState(apiKey);
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
 
     const setApiKey = (value: string) => {
         useConfigStore.setState({ config: normalizeVoteWorkbenchConfig({ ...config, apiKey: value, channels: config.channels.map((channel) => ({ ...channel, apiKey: value })) }) });
     };
+
+    const updateDraftApiKey = (value: string) => {
+        setDraftApiKey(value);
+        setConnectionStatus("idle");
+        if (apiKey) setApiKey("");
+    };
+
+    const validateConnection = async () => {
+        setConnectionStatus("checking");
+        const result = await validateVoteImageConnection(draftApiKey.trim());
+        if (!result.ok) {
+            setConnectionStatus(result.reason);
+            return;
+        }
+        setApiKey(draftApiKey.trim());
+        setConnectionStatus("success");
+        message.success(t("voteWorkbench.connectionVerified"));
+    };
+
+    const connectionAlert = connectionStatus === "success"
+        ? { type: "success" as const, message: t("voteWorkbench.connectionVerified") }
+        : connectionStatus === "authentication_failed"
+            ? { type: "error" as const, message: t("voteWorkbench.authenticationFailed") }
+            : connectionStatus === "model_unavailable"
+                ? { type: "error" as const, message: t("voteWorkbench.modelUnavailable") }
+                : connectionStatus === "service_unavailable"
+                    ? { type: "warning" as const, message: t("voteWorkbench.serviceUnavailable") }
+                    : null;
 
     const clearAll = () => {
         Modal.confirm({
@@ -46,13 +79,17 @@ export function VoteWorkbenchConfigPanel({ showDoneButton = false }: { showDoneB
                     <KeyRound className="size-4" />
                     {t("voteWorkbench.keyTitle")}
                 </div>
-                <Input.Password value={apiKey} autoComplete="off" placeholder="sk-..." onChange={(event) => setApiKey(event.target.value)} />
+                <Input.Password value={draftApiKey} autoComplete="off" placeholder="sk-..." onChange={(event) => updateDraftApiKey(event.target.value)} />
                 <div className="mt-3 grid gap-2 text-xs text-stone-500 sm:grid-cols-2">
                     <div>{t("voteWorkbench.apiLabel")}: {VOTE_API_ORIGIN}</div>
                     <div>{t("voteWorkbench.modelLabel")}: {VOTE_IMAGE_MODEL}</div>
                 </div>
+                {connectionAlert ? <Alert className="mt-3" showIcon type={connectionAlert.type} message={connectionAlert.message} /> : null}
                 <div className="mt-4 flex flex-wrap gap-2">
-                    <Button danger disabled={!apiKey} onClick={() => { setApiKey(""); message.success(t("voteWorkbench.keyCleared")); }}>
+                    <Button type="primary" icon={<ShieldCheck className="size-4" />} disabled={!draftApiKey.trim()} loading={connectionStatus === "checking"} onClick={validateConnection}>
+                        {t("voteWorkbench.verifyConnection")}
+                    </Button>
+                    <Button danger disabled={!draftApiKey} onClick={() => { setDraftApiKey(""); setApiKey(""); setConnectionStatus("idle"); message.success(t("voteWorkbench.keyCleared")); }}>
                         {t("voteWorkbench.clearKey")}
                     </Button>
                     <Button danger icon={<Trash2 className="size-4" />} loading={clearing} onClick={clearAll}>

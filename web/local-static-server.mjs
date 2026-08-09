@@ -16,6 +16,9 @@ createServer((request, response) => {
     const candidate = normalize(join(root, pathname));
     const file = candidate.startsWith(root) && existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(root, "index.html");
     response.setHeader("Content-Type", contentTypes[extname(file)] || "application/octet-stream");
-    if (file.endsWith("config.js")) response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Security-Policy", "frame-ancestors 'self' https://ai.vote520.com");
+    response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("Cache-Control", file.includes(`${root}/assets/`) ? "public, max-age=31536000, immutable" : "no-store");
     createReadStream(file).pipe(response);
 }).listen(3000, "0.0.0.0");

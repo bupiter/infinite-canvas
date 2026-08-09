@@ -41,11 +41,33 @@ type TaskRequestOptions = {
     context?: Sub2ApiImageTaskContext;
 };
 
+export type VoteImageConnectionFailureReason = "authentication_failed" | "model_unavailable" | "service_unavailable";
+
+export type VoteImageConnectionResult =
+    | { ok: true }
+    | { ok: false; reason: VoteImageConnectionFailureReason };
+
 export function isVoteImageGateway(config: Pick<AiConfig, "baseUrl">) {
     try {
         return new URL(config.baseUrl).origin.toLowerCase() === VOTE_IMAGE_API_ORIGIN;
     } catch {
         return false;
+    }
+}
+
+export async function validateVoteImageConnection(apiKey: string): Promise<VoteImageConnectionResult> {
+    try {
+        const response = await axios.get<{ data?: Array<{ id?: string }> }>(buildApiUrl(VOTE_IMAGE_API_ORIGIN, "/models"), {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            timeout: 15_000,
+        });
+        const hasRequiredModel = (response.data.data || []).some((model) => model.id === VOTE_IMAGE_MODEL);
+        return hasRequiredModel ? { ok: true } : { ok: false, reason: "model_unavailable" };
+    } catch (error) {
+        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+            return { ok: false, reason: "authentication_failed" };
+        }
+        return { ok: false, reason: "service_unavailable" };
     }
 }
 
