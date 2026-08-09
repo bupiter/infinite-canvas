@@ -424,7 +424,7 @@ bupiter/infinite-canvas
 - 每次同步上游先在独立分支完成rebase或merge、构建和数据兼容测试。
 - 上游README已提示历史数据格式可能变化，升级必须验证旧画布导入和IndexedDB恢复。
 
-实施前需要重新登录本机GitHub CLI；当前保存的`bupiter`令牌已失效并返回`401`。
+本机 GitHub CLI 已重新认证为`bupiter`，具备`repo`和`workflow`权限。
 
 ## 20. 实施拆分
 

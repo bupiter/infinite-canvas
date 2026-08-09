@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import { normalizeVoteWorkbenchConfig, VOTE_API_ORIGIN, VOTE_CHANNEL_ID, VOTE_IMAGE_MODEL, VOTE_MODEL_VALUE } from "@/lib/vote-workbench";
 
 export type ApiCallFormat = "openai" | "gemini" | "ark";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -64,7 +65,7 @@ export type ConfigTabKey = "channels" | "preferences" | "prompt-sources" | "webd
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
-const OPENAI_BASE_URL = "https://api.openai.com";
+const OPENAI_BASE_URL = VOTE_API_ORIGIN;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 const ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 
@@ -75,24 +76,21 @@ export const defaultConfig: AiConfig = {
     apiFormat: "openai",
     channels: [
         {
-            id: "default",
-            name: i18n.t("config.channels.defaultName"),
+            id: VOTE_CHANNEL_ID,
+            name: "Vote Image",
             baseUrl: OPENAI_BASE_URL,
             apiKey: "",
             apiFormat: "openai",
             models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
+                { name: VOTE_IMAGE_MODEL, capability: "image" },
             ],
         },
     ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    model: VOTE_MODEL_VALUE,
+    imageModel: VOTE_MODEL_VALUE,
+    videoModel: "",
+    textModel: "",
+    audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -103,12 +101,12 @@ export const defaultConfig: AiConfig = {
     videoWatermark: "false",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
+    models: [VOTE_MODEL_VALUE],
     quality: "auto",
     size: "1:1",
     background: "",
     count: "1",
-    canvasImageCount: "3",
+    canvasImageCount: "1",
 };
 
 export const defaultWebdavSyncConfig: WebdavSyncConfig = {
@@ -196,10 +194,10 @@ export const useConfigStore = create<ConfigStore>()(
             shouldPromptContinue: false,
             updateConfig: (key, value) =>
                 set((state) => ({
-                    config: {
+                    config: normalizeVoteWorkbenchConfig({
                         ...state.config,
                         [key]: value,
-                    },
+                    }),
                 })),
             updateWebdavConfig: (key, value) =>
                 set((state) => ({
@@ -224,30 +222,31 @@ export const useConfigStore = create<ConfigStore>()(
                 if (!Array.isArray(persistedConfig.channels)) config.channels = [];
                 const channels = normalizeChannels(config);
                 const models = modelOptionsFromChannels(channels);
+                const mergedConfig: AiConfig = {
+                    ...config,
+                    channelMode: "local",
+                    apiFormat: normalizeApiFormat(config.apiFormat),
+                    channels,
+                    models,
+                    imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
+                    videoModel: normalizeModelOptionValue(config.videoModel, channels),
+                    textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
+                    audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
+                    audioVoice: config.audioVoice || defaultConfig.audioVoice,
+                    audioFormat: config.audioFormat || defaultConfig.audioFormat,
+                    audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+                    audioInstructions: config.audioInstructions || "",
+                    reasoningEffort: config.reasoningEffort || "auto",
+                    videoSeconds: config.videoSeconds || "6",
+                    vquality: config.vquality || "720",
+                    videoGenerateAudio: config.videoGenerateAudio || "true",
+                    videoWatermark: config.videoWatermark || "false",
+                    canvasImageCount: config.canvasImageCount || "1",
+                };
                 return {
                     ...current,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
-                    config: {
-                        ...config,
-                        channelMode: "local",
-                        apiFormat: normalizeApiFormat(config.apiFormat),
-                        channels,
-                        models,
-                        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
-                        videoModel: normalizeModelOptionValue(config.videoModel, channels),
-                        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
-                        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
-                        audioVoice: config.audioVoice || defaultConfig.audioVoice,
-                        audioFormat: config.audioFormat || defaultConfig.audioFormat,
-                        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
-                        audioInstructions: config.audioInstructions || "",
-                        reasoningEffort: config.reasoningEffort || "auto",
-                        videoSeconds: config.videoSeconds || "6",
-                        vquality: config.vquality || "720",
-                        videoGenerateAudio: config.videoGenerateAudio || "true",
-                        videoWatermark: config.videoWatermark || "false",
-                        canvasImageCount: config.canvasImageCount || "3",
-                    },
+                    config: normalizeVoteWorkbenchConfig(mergedConfig),
                 };
             },
         },
@@ -334,11 +333,12 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     return matched || config.channels[0] || createModelChannel({ id: "default", name: i18n.t("config.channels.defaultName"), baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
 }
 
-export function resolveModelRequestConfig(config: AiConfig, value: string) {
-    const channel = resolveModelChannel(config, value);
+export function resolveModelRequestConfig(config: AiConfig, _value: string) {
+    const voteConfig = normalizeVoteWorkbenchConfig(config);
+    const channel = resolveModelChannel(voteConfig, VOTE_MODEL_VALUE);
     return {
-        ...config,
-        model: modelOptionName(value || config.model),
+        ...voteConfig,
+        model: VOTE_IMAGE_MODEL,
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,

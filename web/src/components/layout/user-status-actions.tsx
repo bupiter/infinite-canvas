@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
-import { Tooltip } from "antd";
-import { BookOpen, Keyboard, Puzzle, Settings2 } from "lucide-react";
+import { Modal, Tooltip } from "antd";
+import { BookOpen, CircleHelp, Keyboard, Puzzle, Settings2 } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
@@ -34,6 +35,7 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
     const locale = i18n.resolvedLanguage as AppLocale;
     const nextLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
     const languageLabel = t("topNav.switchLanguage", { language: t(nextLocale === "zh-CN" ? "locale.zhCN" : "locale.enUS") });
+    const [aboutOpen, setAboutOpen] = useState(false);
 
     return (
         <div className="inline-flex shrink-0 items-center gap-1">
@@ -45,6 +47,9 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
             <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" className={naturalIconClass} style={iconStyle} aria-label={t("topNav.docs")} title={t("topNav.docs")}>
                 <BookOpen className="size-4" />
             </a>
+            <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => setAboutOpen(true)} aria-label={t("voteWorkbench.about")} title={t("voteWorkbench.about")}>
+                <CircleHelp className="size-4" />
+            </button>
             {showConfig ? (
                 <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => openConfigDialog(false)} aria-label={t("navigation.config")} title={t("navigation.config")}>
                     <Settings2 className="size-4" />
@@ -63,6 +68,12 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
                     <Keyboard className="size-4" />
                 </button>
             ) : null}
+            <Modal title={t("voteWorkbench.about")} open={aboutOpen} footer={null} centered onCancel={() => setAboutOpen(false)}>
+                <p className="text-sm text-stone-600 dark:text-stone-300">{t("voteWorkbench.aboutDescription")}</p>
+                <a href="https://github.com/basketikun/infinite-canvas" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400">
+                    {t("voteWorkbench.upstream")}
+                </a>
+            </Modal>
         </div>
     );
 }
