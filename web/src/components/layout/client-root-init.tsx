@@ -1,53 +1,31 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
-import { App } from "antd";
-import { useTranslation } from "react-i18next";
 
-import { createModelChannel, useConfigStore } from "@/stores/use-config-store";
+import { changeAppLocale } from "@/i18n";
 import { usePromptSourceScheduler } from "@/hooks/use-prompt-source-scheduler";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
-    const { message } = App.useApp();
-    const { t } = useTranslation();
     const handledConfigParams = useRef(false);
-    const updateConfig = useConfigStore((state) => state.updateConfig);
-    const config = useConfigStore((state) => state.config);
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const setTheme = useThemeStore((state) => state.setTheme);
 
     usePromptSourceScheduler();
 
     useEffect(() => {
         if (handledConfigParams.current) return;
         const searchParams = new URLSearchParams(window.location.search);
-        const baseUrl = searchParams.get("baseUrl") || searchParams.get("baseurl");
-        const apiKey = searchParams.get("apiKey") || searchParams.get("apikey");
-        if (!baseUrl && !apiKey) return;
         handledConfigParams.current = true;
-        searchParams.delete("baseUrl");
-        searchParams.delete("baseurl");
-        searchParams.delete("apiKey");
-        searchParams.delete("apikey");
-        window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
-        const firstChannel = config.channels[0];
-        updateConfig(
-            "channels",
-            firstChannel
-                ? config.channels.map((channel, index) =>
-                      index === 0
-                          ? {
-                                ...channel,
-                                ...(baseUrl ? { baseUrl } : {}),
-                                ...(apiKey ? { apiKey } : {}),
-                            }
-                          : channel,
-                  )
-                : [createModelChannel({ id: "default", name: t("config.channels.defaultName"), baseUrl: baseUrl || undefined, apiKey: apiKey || "" })],
-        );
-        if (baseUrl) updateConfig("baseUrl", baseUrl);
-        if (apiKey) updateConfig("apiKey", apiKey);
-        openConfigDialog(false);
-        message.success(t("config.importedDirectConfig"));
-    }, [config.channels, message, openConfigDialog, t, updateConfig]);
+        const theme = searchParams.get("theme");
+        const lang = searchParams.get("lang");
+        if (theme === "light" || theme === "dark") setTheme(theme);
+        if (lang === "zh-CN" || lang === "en-US") void changeAppLocale(lang);
+
+        const forbidden = new Set(["baseurl", "apikey", "token", "user_id", "src_url"]);
+        const forbiddenKeys = Array.from(searchParams.keys()).filter((key) => forbidden.has(key.toLowerCase()));
+        const hasForbidden = forbiddenKeys.length > 0;
+        forbiddenKeys.forEach((key) => searchParams.delete(key));
+        if (hasForbidden) window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
+    }, [setTheme]);
 
     return <>{children}</>;
 }

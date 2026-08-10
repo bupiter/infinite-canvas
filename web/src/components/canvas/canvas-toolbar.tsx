@@ -5,6 +5,7 @@ import { CircleDot, Eraser, Grid2x2, Group, Hand, Image as ImageIcon, Info, Moon
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
+import { VOTE_WORKBENCH } from "@/lib/vote-workbench";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useTranslation } from "react-i18next";
@@ -88,9 +89,9 @@ export function CanvasToolbar({
     }, [extensionsOpen, appearanceOpen]);
 
     return (
-        <div ref={rootRef} className="pointer-events-none absolute bottom-5 z-50 flex justify-center" style={{ left: 300, right: 16 }}>
+        <div ref={rootRef} className="pointer-events-none absolute bottom-3 left-3 right-3 z-50 flex min-w-0 justify-center sm:bottom-5 sm:left-[300px] sm:right-4">
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
-            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
+            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 w-full min-w-0 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur sm:w-auto [&>*]:shrink-0" style={dockStyle}>
                 <ToolbarButton id={`tool-${canvasTool}`} label={t(`canvas.toolbar.${canvasTool}`)} active hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onCanvasToolChange(canvasTool === "select" ? "pan" : "select")}>
                     {canvasTool === "select" ? <MousePointer2 className="size-4.5" /> : <Hand className="size-4.5" />}
                 </ToolbarButton>
@@ -107,19 +108,23 @@ export function CanvasToolbar({
                 <ToolbarButton id="tool-image" label={t("canvas.toolbar.image")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddImage}>
                     <ImageIcon className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-video" label={t("canvas.toolbar.video")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
-                    <Video className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-audio" label={t("canvas.toolbar.audio")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
-                    <Music2 className="size-4.5" />
-                </ToolbarButton>
+                {!VOTE_WORKBENCH ? (
+                    <>
+                        <ToolbarButton id="tool-video" label={t("canvas.toolbar.video")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
+                            <Video className="size-4.5" />
+                        </ToolbarButton>
+                        <ToolbarButton id="tool-audio" label={t("canvas.toolbar.audio")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
+                            <Music2 className="size-4.5" />
+                        </ToolbarButton>
+                    </>
+                ) : null}
                 <ToolbarButton id="tool-config" label={t("canvas.toolbar.config")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddConfig}>
                     <Settings2 className="size-4.5" />
                 </ToolbarButton>
                 <ToolbarButton id="tool-group" label={t("canvas.toolbar.group")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddGroup}>
                     <Group className="size-4.5" />
                 </ToolbarButton>
-                {extensionDefs.length ? (
+                {!VOTE_WORKBENCH && extensionDefs.length ? (
                     <ToolbarButton
                         id="tool-extensions"
                         label={t("canvas.toolbar.extensions")}
@@ -170,9 +175,11 @@ export function CanvasToolbar({
                     </>
                 ) : null}
                 <Divider theme={theme} />
-                <ToolbarButton id="tool-clear" label={t("canvas.toolbar.clear")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
-                    <Eraser className="size-4.5" />
-                </ToolbarButton>
+                <div className="hidden sm:block">
+                    <ToolbarButton id="tool-clear" label={t("canvas.toolbar.clear")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
+                        <Eraser className="size-4.5" />
+                    </ToolbarButton>
+                </div>
             </div>
 
             {extensionsOpen && extensionDefs.length ? (

@@ -15,7 +15,7 @@ import { modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } f
 import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
-import { requestEdit, requestGeneration } from "@/services/api/image";
+import { isVoteImageRequest, listPendingImageTasks, requestEdit, requestGeneration, resumeImageTask } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
@@ -100,10 +100,11 @@ export default function ImagePage() {
     const updateAgentTask = useWorkbenchAgentStore((state) => state.updateTask);
     const processedCommandRef = useRef(0);
     const agentTaskIdRef = useRef<string | undefined>(undefined);
+    const recoveredTaskIdsRef = useRef(new Set<string>());
 
     const model = effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
-    const generationCount = Math.max(1, Math.min(10, Number(config.count) || 1));
+    const generationCount = isVoteImageRequest({ ...effectiveConfig, model }) ? 1 : Math.max(1, Math.min(10, Number(config.count) || 1));
 
     useEffect(() => {
         if (!running || !startedAt) return;
@@ -114,6 +115,34 @@ export default function ImagePage() {
     useEffect(() => {
         void refreshLogs();
     }, []);
+
+    useEffect(() => {
+        const requestConfig = { ...effectiveConfig, model };
+        if (!isVoteImageRequest(requestConfig)) return;
+        let disposed = false;
+        void listPendingImageTasks(requestConfig).then(async (tasks) => {
+            const task = tasks.find((item) => item.context?.surface === "image-workbench" && !recoveredTaskIdsRef.current.has(item.id));
+            if (!task) return;
+            recoveredTaskIdsRef.current.add(task.id);
+            setRunning(true);
+            setResults([{ id: task.id, status: "pending" }]);
+            try {
+                const image = (await resumeImageTask(requestConfig, task))[0];
+                if (!image || disposed) return;
+                const stored = await uploadImage(image.dataUrl);
+                if (disposed) return;
+                setResults([{ id: image.id, status: "success", image: { id: image.id, dataUrl: stored.url, storageKey: stored.storageKey, durationMs: Math.max(0, Date.now() - task.createdAt), width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType } }]);
+                message.success(t("imageWorkbench.generated"));
+            } catch (error) {
+                if (!disposed) setResults([{ id: task.id, status: "failed", error: error instanceof Error ? error.message : t("workbench.generationFailed") }]);
+            } finally {
+                if (!disposed) setRunning(false);
+            }
+        });
+        return () => {
+            disposed = true;
+        };
+    }, [effectiveConfig, message, model, t]);
 
     const addReferences = async (files?: FileList | null) => {
         const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
@@ -327,7 +356,8 @@ export default function ImagePage() {
     const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
         const itemStartedAt = performance.now();
         try {
-            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references) : await requestGeneration(snapshot.config, snapshot.text);
+            const taskContext = { surface: "image-workbench" as const };
+            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, undefined, { taskContext }) : await requestGeneration(snapshot.config, snapshot.text, { taskContext });
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
             const meta = await readImageMeta(image.dataUrl);
