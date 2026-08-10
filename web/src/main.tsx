@@ -6,9 +6,15 @@ import "./styles/globals.css";
 import { RouterProvider } from "react-router-dom";
 
 import { AppProviders } from "@/components/layout/app-providers";
-import "@/i18n";
+import { changeAppLocale } from "@/i18n";
 import { initAnalytics } from "@/lib/analytics";
+import { readVoteWorkbenchQueryPreferences } from "@/lib/vote-workbench";
 import { router } from "@/router";
+import { useThemeStore } from "@/stores/use-theme-store";
+
+const queryPreferences = readVoteWorkbenchQueryPreferences();
+if (queryPreferences.locale) void changeAppLocale(queryPreferences.locale);
+if (queryPreferences.theme) useThemeStore.getState().setTheme(queryPreferences.theme);
 
 initAnalytics();
 

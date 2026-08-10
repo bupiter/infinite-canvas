@@ -1,0 +1,8 @@
+FROM node:24-alpine
+
+WORKDIR /app
+COPY web/dist ./dist
+COPY web/local-static-server.mjs ./server.mjs
+
+EXPOSE 3000
+CMD ["node", "server.mjs"]

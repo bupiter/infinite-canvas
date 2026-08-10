@@ -14,6 +14,18 @@ sanitize_id() {
 GA4_ID=$(sanitize_id "${ANALYTICS_GA4_ID:-}")
 BAIDU_ID=$(sanitize_id "${ANALYTICS_BAIDU_ID:-}")
 
+ASSET_ORIGIN=""
+if [ -n "${VOTE_IMAGE_ASSET_ORIGIN:-}" ]; then
+  if printf '%s' "$VOTE_IMAGE_ASSET_ORIGIN" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+    ASSET_ORIGIN="$VOTE_IMAGE_ASSET_ORIGIN"
+  else
+    echo "VOTE_IMAGE_ASSET_ORIGIN must be one HTTPS origin without a path" >&2
+    exit 1
+  fi
+fi
+
+sed -i "s|__VOTE_IMAGE_ASSET_ORIGIN__|${ASSET_ORIGIN}|g" /etc/nginx/snippets/vote-security-headers.conf
+
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__RUNTIME_CONFIG__ = {
   ANALYTICS_GA4_ID: "${GA4_ID}",

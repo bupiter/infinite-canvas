@@ -424,7 +424,7 @@ bupiter/infinite-canvas
 - 每次同步上游先在独立分支完成rebase或merge、构建和数据兼容测试。
 - 上游README已提示历史数据格式可能变化，升级必须验证旧画布导入和IndexedDB恢复。
 
-实施前需要重新登录本机GitHub CLI；当前保存的`bupiter`令牌已失效并返回`401`。
+本机 GitHub CLI 已重新认证为`bupiter`，具备`repo`和`workflow`权限。
 
 ## 20. 实施拆分
 
@@ -456,6 +456,11 @@ bupiter/infinite-canvas
 - 创建`canvas.vote520.com`和`image.vote520.com`DNS记录。
 - 配置Cloudflare代理、TLS、缓存和WAF。
 - 部署Canvas静态容器或静态文件服务。
+- Canvas必须从本Fork的固定提交构建，不得直接拉取`basketikun/infinite-canvas:latest`，避免上游变更未经验证进入生产。
+- 常规构建使用根目录`Dockerfile`；内存受限环境先在受控构建机执行前端构建并验证`web/dist`，再使用`Dockerfile.prebuilt`只封装Nginx运行镜像。
+- Canvas容器必须设置`VOTE_IMAGE_ASSET_ORIGIN`为私有生图对象存储对外签名URL所使用的唯一HTTPS Origin，例如`https://assets.vote520.com`。该值只能包含协议、主机和可选端口，不允许路径、查询参数、通配符或多个Origin；配置异常时容器必须拒绝启动。
+- CSP的`connect-src`、`img-src`和`media-src`只放行`image.vote520.com`及上述精确对象存储Origin，不得使用宽泛的`https:`通配。
+- 生产Nginx必须加载`nginx-security-headers.conf`，并保留只允许`https://ai.vote520.com`和自身嵌入的`frame-ancestors`策略。
 - 配置image域名Nginx路由白名单。
 - 创建并配置私有生图对象存储桶。
 - 配置对象生命周期和CORS。
