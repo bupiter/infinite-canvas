@@ -89,9 +89,9 @@ export function CanvasToolbar({
     }, [extensionsOpen, appearanceOpen]);
 
     return (
-        <div ref={rootRef} className="pointer-events-none absolute bottom-3 left-3 right-3 z-50 flex justify-center sm:bottom-5 sm:left-[300px] sm:right-4">
+        <div ref={rootRef} className="pointer-events-none absolute bottom-3 left-3 right-3 z-50 flex min-w-0 justify-center sm:bottom-5 sm:left-[300px] sm:right-4">
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
-            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
+            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 w-full min-w-0 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur sm:w-auto [&>*]:shrink-0" style={dockStyle}>
                 <ToolbarButton id={`tool-${canvasTool}`} label={t(`canvas.toolbar.${canvasTool}`)} active hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onCanvasToolChange(canvasTool === "select" ? "pan" : "select")}>
                     {canvasTool === "select" ? <MousePointer2 className="size-4.5" /> : <Hand className="size-4.5" />}
                 </ToolbarButton>
@@ -175,9 +175,11 @@ export function CanvasToolbar({
                     </>
                 ) : null}
                 <Divider theme={theme} />
-                <ToolbarButton id="tool-clear" label={t("canvas.toolbar.clear")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
-                    <Eraser className="size-4.5" />
-                </ToolbarButton>
+                <div className="hidden sm:block">
+                    <ToolbarButton id="tool-clear" label={t("canvas.toolbar.clear")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
+                        <Eraser className="size-4.5" />
+                    </ToolbarButton>
+                </div>
             </div>
 
             {extensionsOpen && extensionDefs.length ? (

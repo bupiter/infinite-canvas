@@ -113,7 +113,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                         <CanvasPromptsTab onInsert={onInsertAsset} theme={theme} />
                     )}
                 </div>
-                <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
+                <button type="button" className="absolute inset-y-0 right-0 z-40 hidden w-4 translate-x-1/2 cursor-col-resize sm:block" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
             </motion.aside>
         </motion.div>
     );
