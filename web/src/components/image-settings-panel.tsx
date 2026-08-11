@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
-import { VOTE_WORKBENCH } from "@/lib/vote-workbench";
 import type { AiConfig } from "@/stores/use-config-store";
 
 const qualityOptions = [
@@ -52,7 +51,6 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const activeSize = config.size || "auto";
     const transparentBackground = config.background === "transparent";
     const selectedAspect = aspectOptions.find((item) => (item.size || item.value) === activeSize || item.value === activeSize);
-    const displayedAspectOptions = aspectOptions;
     const dimensions = readSizeDimensions(activeSize, selectedAspect || aspectOptions[0]);
     const selectAspect = (value: string) => {
         const option = aspectOptions.find((item) => item.value === value);
@@ -77,18 +75,16 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.image.title")}</div> : null}
-                {!VOTE_WORKBENCH ? (
-                    <div className="space-y-2.5">
-                        <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
-                        <div className="grid grid-cols-4 gap-2.5">
-                            {qualityOptions.map((item) => (
-                                <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
-                                    {t(`settingsPanels.common.${item.labelKey}`)}
-                                </OptionPill>
-                            ))}
-                        </div>
+                <div className="space-y-2.5">
+                    <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
+                    <div className="grid grid-cols-4 gap-2.5">
+                        {qualityOptions.map((item) => (
+                            <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
+                                {t(`settingsPanels.common.${item.labelKey}`)}
+                            </OptionPill>
+                        ))}
                     </div>
-                ) : null}
+                </div>
                 <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.size")}</SettingTitle>
@@ -110,7 +106,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.aspectRatio")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {displayedAspectOptions.map((item) => (
+                        {aspectOptions.map((item) => (
                             <button
                                 key={item.value}
                                 type="button"

@@ -24,7 +24,29 @@ if [ -n "${VOTE_IMAGE_ASSET_ORIGIN:-}" ]; then
   fi
 fi
 
-sed -i "s|__VOTE_IMAGE_ASSET_ORIGIN__|${ASSET_ORIGIN}|g" /etc/nginx/snippets/vote-security-headers.conf
+sanitize_origins() {
+  NAME="$1"
+  VALUE="$2"
+  RESULT=""
+  for ORIGIN in $VALUE; do
+    if printf '%s' "$ORIGIN" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+      RESULT="${RESULT} ${ORIGIN}"
+    else
+      echo "${NAME} must contain only space-separated HTTPS origins without paths" >&2
+      exit 1
+    fi
+  done
+  printf '%s' "$RESULT"
+}
+
+CONNECT_ORIGINS=$(sanitize_origins VOTE_CONNECT_ORIGINS "${VOTE_CONNECT_ORIGINS:-}")
+MEDIA_ORIGINS=$(sanitize_origins VOTE_MEDIA_ORIGINS "${VOTE_MEDIA_ORIGINS:-}")
+
+sed -i \
+  -e "s|__VOTE_IMAGE_ASSET_ORIGIN__|${ASSET_ORIGIN}|g" \
+  -e "s|__VOTE_CONNECT_ORIGINS__|${CONNECT_ORIGINS}|g" \
+  -e "s|__VOTE_MEDIA_ORIGINS__|${MEDIA_ORIGINS}|g" \
+  /etc/nginx/snippets/vote-security-headers.conf
 
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__RUNTIME_CONFIG__ = {

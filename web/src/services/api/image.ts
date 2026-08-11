@@ -8,15 +8,6 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import {
-    isVoteImageGateway,
-    listPendingSub2ApiImageTasks,
-    requestSub2ApiImageTask,
-    resumeSub2ApiImageTask,
-    VOTE_IMAGE_MODEL,
-    type StoredSub2ApiImageTask,
-    type Sub2ApiImageTaskContext,
-} from "./sub2api-image-task";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -103,13 +94,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal; taskContext?: Sub2ApiImageTaskContext };
-
-export { isVoteImageGateway };
-
-export function isVoteImageRequest(config: AiConfig) {
-    return isVoteImageGateway(resolveModelRequestConfig(config, config.model || config.imageModel));
-}
+type RequestOptions = { signal?: AbortSignal };
 
 const QUALITY_BASE: Record<string, number> = {
     low: 1024,
@@ -210,15 +195,6 @@ function resolveRequestSize(quality: string | undefined, size: string) {
     }
     if (value.includes(":")) return resolveSize(quality, value);
     throw new Error(apiText("invalidImageSizeFormat"));
-}
-
-export function resolveVoteImageRequestPlan(size: string) {
-    const outputSize = resolveRequestSize(undefined, size);
-    if (!outputSize) return { sourceSize: undefined, outputSize: undefined };
-    const output = parseImageDimensions(outputSize);
-    if (!output) throw new Error(apiText("invalidImageSizeFormat"));
-    const sourceSize = resolveSize(undefined, `${output.width}:${output.height}`);
-    return { sourceSize, outputSize: sourceSize === outputSize ? undefined : outputSize };
 }
 
 function resolveGeminiImageConfig(config: AiConfig) {
@@ -739,28 +715,6 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    if (isVoteImageGateway(requestConfig)) {
-        const requestPlan = resolveVoteImageRequestPlan(config.size);
-        try {
-            const payload = await requestSub2ApiImageTask(
-                { ...requestConfig, model: VOTE_IMAGE_MODEL },
-                "/images/generations/async",
-                {
-                    model: VOTE_IMAGE_MODEL,
-                    prompt: withSystemPrompt(requestConfig, prompt),
-                    n: 1,
-                    quality: "low",
-                    ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
-                    response_format: "b64_json",
-                    output_format: IMAGE_OUTPUT_FORMAT,
-                },
-                { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize },
-            );
-            return parseImagePayload(payload as ImageApiResponse);
-        } catch (error) {
-            throw new Error(readAxiosError(error, apiText("requestFailed")));
-        }
-    }
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
@@ -819,28 +773,8 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    const requestPrompt = buildImageReferencePromptText(prompt, references);
-    if (isVoteImageGateway(requestConfig)) {
-        if (mask) throw new Error(apiText("maskModelUnsupported"));
-        const requestPlan = resolveVoteImageRequestPlan(config.size);
-        const formData = new FormData();
-        formData.set("model", VOTE_IMAGE_MODEL);
-        formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
-        formData.set("n", "1");
-        formData.set("quality", "low");
-        formData.set("response_format", "b64_json");
-        formData.set("output_format", IMAGE_OUTPUT_FORMAT);
-        if (requestPlan.sourceSize) formData.set("size", requestPlan.sourceSize);
-        const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-        files.forEach((file) => formData.append("image", file));
-        try {
-            const payload = await requestSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, "/images/edits/async", formData, { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize });
-            return parseImagePayload(payload as ImageApiResponse);
-        } catch (error) {
-            throw new Error(readAxiosError(error, apiText("requestFailed")));
-        }
-    }
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const requestPrompt = buildImageReferencePromptText(prompt, references);
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
         const quality = normalizeQuality(config.quality);
@@ -928,22 +862,6 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
         const images = parseImagePayload(response.data);
         return images;
-    } catch (error) {
-        throw new Error(readAxiosError(error, apiText("requestFailed")));
-    }
-}
-
-export async function listPendingImageTasks(config: AiConfig) {
-    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    return isVoteImageGateway(requestConfig) ? listPendingSub2ApiImageTasks(requestConfig) : [];
-}
-
-export async function resumeImageTask(config: AiConfig, task: StoredSub2ApiImageTask, options?: Pick<RequestOptions, "signal">) {
-    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    if (!isVoteImageGateway(requestConfig)) throw new Error("当前配置不是 Vote 生图线路");
-    try {
-        const payload = await resumeSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, task, options?.signal);
-        return parseImagePayload(payload as ImageApiResponse);
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("requestFailed")));
     }

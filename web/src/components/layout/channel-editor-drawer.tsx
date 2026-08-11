@@ -1,8 +1,10 @@
-import { Button, Drawer, Input, Segmented, Select, Space } from "antd";
+import { Alert, App, Button, Drawer, Input, Segmented, Select, Space } from "antd";
 import { ListPlus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isVoteImageBaseUrl, VOTE_DATA_NOTICE_STORAGE_KEY, VOTE_IMAGE_MODEL } from "@/lib/vote-workbench";
+import { validateVoteImageChannel } from "@/services/api/vote-image-channel";
 import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
@@ -10,10 +12,13 @@ import { ModelSelectModal } from "./model-select-modal";
 type ScriptTarget = { name: string; capability: ModelCapability; value: string };
 
 export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: boolean; channel: ModelChannel | null; onSave: (channel: ModelChannel) => void; onClose: () => void }) {
+    const { message, modal } = App.useApp();
     const { t } = useTranslation();
     const [draft, setDraft] = useState<ModelChannel | null>(channel);
     const [selectOpen, setSelectOpen] = useState(false);
     const [scriptTarget, setScriptTarget] = useState<ScriptTarget | null>(null);
+    const [saving, setSaving] = useState(false);
+    const validationControllerRef = useRef<AbortController | null>(null);
     const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
         { label: "OpenAI", value: "openai" },
         { label: "Gemini", value: "gemini" },
@@ -22,12 +27,30 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const capabilityOptions: Array<{ label: string; value: ModelCapability }> = ["image", "video", "text", "audio"].map((value) => ({ label: t(`config.channelEditor.capabilities.${value}`), value: value as ModelCapability }));
 
     useEffect(() => {
-        if (open && channel) setDraft(channel);
+        if (!open || !channel) return;
+        validationControllerRef.current?.abort();
+        validationControllerRef.current = null;
+        setSaving(false);
+        setDraft(channel);
     }, [open, channel]);
+
+    useEffect(
+        () => () => {
+            validationControllerRef.current?.abort();
+        },
+        [],
+    );
 
     if (!draft) return null;
 
-    const patch = (value: Partial<ModelChannel>) => setDraft((current) => (current ? { ...current, ...value } : current));
+    const patch = (value: Partial<ModelChannel>) => {
+        if ("baseUrl" in value || "apiKey" in value) {
+            validationControllerRef.current?.abort();
+            validationControllerRef.current = null;
+            setSaving(false);
+        }
+        setDraft((current) => (current ? { ...current, ...value } : current));
+    };
     const setModels = (models: ChannelModel[]) => patch({ models });
 
     const changeApiFormat = (apiFormat: ApiCallFormat) => {
@@ -44,27 +67,97 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const setScript = (name: string, script: string) => setModels(draft.models.map((model) => (model.name === name ? { ...model, script: script || undefined } : model)));
     const removeModel = (name: string) => setModels(draft.models.filter((model) => model.name !== name));
 
-    const save = () => {
-        onSave({ ...draft, name: draft.name.trim() || t("config.channels.unnamed"), models: normalizeChannelModels(draft.models) });
+    const close = () => {
+        validationControllerRef.current?.abort();
+        validationControllerRef.current = null;
         onClose();
     };
+
+    const confirmVoteNotice = () => {
+        if (localStorage.getItem(VOTE_DATA_NOTICE_STORAGE_KEY) === "accepted") return Promise.resolve(true);
+        return new Promise<boolean>((resolve) => {
+            let settled = false;
+            const settle = (accepted: boolean) => {
+                if (settled) return;
+                settled = true;
+                resolve(accepted);
+            };
+            modal.confirm({
+                title: t("voteWorkbench.firstUseTitle"),
+                content: (
+                    <ul className="list-disc space-y-2 pl-5 text-sm">
+                        <li>{t("voteWorkbench.firstUseData")}</li>
+                        <li>{t("voteWorkbench.firstUseModeration")}</li>
+                        <li>{t("voteWorkbench.firstUseBilling")}</li>
+                        <li>{t("voteWorkbench.firstUsePolicy")}</li>
+                    </ul>
+                ),
+                okText: t("voteWorkbench.firstUseAccept"),
+                cancelText: t("common.cancel"),
+                onOk: () => {
+                    localStorage.setItem(VOTE_DATA_NOTICE_STORAGE_KEY, "accepted");
+                    settle(true);
+                },
+                onCancel: () => settle(false),
+                afterClose: () => settle(false),
+            });
+        });
+    };
+
+    const save = async () => {
+        const normalized = { ...draft, name: draft.name.trim() || t("config.channels.unnamed"), baseUrl: draft.baseUrl.trim(), models: normalizeChannelModels(draft.models) };
+        if (!isVoteImageBaseUrl(normalized.baseUrl)) {
+            onSave(normalized);
+            close();
+            return;
+        }
+        if (!normalized.apiKey.trim()) {
+            message.error(t("config.modelSelect.missingConfig"));
+            return;
+        }
+        if (!(await confirmVoteNotice())) return;
+
+        const controller = new AbortController();
+        validationControllerRef.current?.abort();
+        validationControllerRef.current = controller;
+        setSaving(true);
+        try {
+            await validateVoteImageChannel(normalized, controller.signal);
+            if (validationControllerRef.current !== controller) return;
+            const existing = normalized.models.find((model) => model.name === VOTE_IMAGE_MODEL);
+            onSave({ ...normalized, apiFormat: "openai", apiKey: normalized.apiKey.trim(), models: [{ ...existing, name: VOTE_IMAGE_MODEL, capability: "image" }] });
+            message.success(t("voteWorkbench.connectionVerified"));
+            close();
+        } catch (error) {
+            if (validationControllerRef.current !== controller) return;
+            message.error(error instanceof Error ? error.message : t("voteWorkbench.serviceUnavailable"));
+        } finally {
+            if (validationControllerRef.current === controller) {
+                validationControllerRef.current = null;
+                setSaving(false);
+            }
+        }
+    };
+
+    const voteChannel = isVoteImageBaseUrl(draft.baseUrl);
 
     return (
         <Drawer
             open={open}
             width={640}
             title={t("config.channelEditor.title")}
-            onClose={onClose}
+            onClose={close}
             styles={{ body: { paddingTop: 16 } }}
             extra={
                 <Space>
-                    <Button onClick={onClose}>{t("common.cancel")}</Button>
-                    <Button type="primary" onClick={save}>
+                    <Button onClick={close}>{t("common.cancel")}</Button>
+                    <Button type="primary" loading={saving} onClick={() => void save()}>
                         {t("common.save")}
                     </Button>
                 </Space>
             }
         >
+            {voteChannel ? <Alert className="mb-4" type="info" showIcon message={t("voteWorkbench.dataNoticeTitle")} description={t("voteWorkbench.dataNotice")} /> : null}
             <div className="grid gap-4 md:grid-cols-2">
                 <label className="block">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.name")}</span>
@@ -80,7 +173,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">API Key</span>
-                    <Input.Password value={draft.apiKey} onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
+                    <Input.Password visibilityToggle={false} value={draft.apiKey} onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
                 </label>
             </div>
 

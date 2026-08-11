@@ -3,7 +3,6 @@ import { Brush, Camera, Copy, FileText, Grid2x2, Lock, LockOpen, Maximize2, Scis
 
 import type { CanvasNodeData } from "@/types/canvas";
 import i18n from "@/i18n";
-import { VOTE_WORKBENCH } from "@/lib/vote-workbench";
 
 export type ImageNodeActionToolId = "copyPrompt" | "reversePrompt" | "replace" | "resize" | "maskEdit" | "crop" | "split" | "upscale" | "superResolve" | "angle" | "view";
 export type ImageQuickToolId = "info" | "delete" | "saveAsset" | "download" | "edit" | ImageNodeActionToolId;
@@ -133,12 +132,10 @@ export const imageToolDefinitions: ImageToolDefinition[] = [
     },
 ];
 
-const enabledImageToolDefinitions = imageToolDefinitions.filter((tool) => !VOTE_WORKBENCH || tool.id !== "maskEdit");
-
-export const defaultImageQuickToolIds: ImageQuickToolId[] = [...defaultBaseToolIds, ...enabledImageToolDefinitions.filter((tool) => tool.defaultVisible).map((tool) => tool.id)];
+export const defaultImageQuickToolIds: ImageQuickToolId[] = [...defaultBaseToolIds, ...imageToolDefinitions.filter((tool) => tool.defaultVisible).map((tool) => tool.id)];
 
 export function buildImageToolbarTools(node: CanvasNodeData, handlers: ImageToolHandlers) {
-    return enabledImageToolDefinitions.map((tool) => ({
+    return imageToolDefinitions.map((tool) => ({
         id: tool.id,
         label: resolveToolText(tool.label, node),
         title: resolveToolText(tool.title, node),
@@ -149,7 +146,7 @@ export function buildImageToolbarTools(node: CanvasNodeData, handlers: ImageTool
 }
 
 export function normalizeImageQuickToolIds(value: unknown[]) {
-    const allIds: ImageQuickToolId[] = [...defaultBaseToolIds, ...enabledImageToolDefinitions.map((tool) => tool.id)];
+    const allIds: ImageQuickToolId[] = [...defaultBaseToolIds, ...imageToolDefinitions.map((tool) => tool.id)];
     const ids = new Set(allIds);
     return allIds.filter((id) => value.includes(id) && ids.has(id));
 }

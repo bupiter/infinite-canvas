@@ -23,8 +23,9 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
     const pickerId = useId();
     const [open, setOpen] = useState(false);
     const options = useMemo(() => Array.from(new Set([...(config.channelMode === "local" && !capability ? [value] : []), ...selectableModelsByCapability(config, capability)].filter((model): model is string => Boolean(model)))), [capability, config, value]);
-    const current = value || "";
-    const pickerPlaceholder = placeholder || t("settingsPanels.model.select");
+    const requested = value || "";
+    const current = !capability || options.includes(requested) ? requested : "";
+    const pickerPlaceholder = placeholder || (options.length ? t("settingsPanels.model.select") : emptyModelLabel(config, capability));
 
     useEffect(() => {
         const closeOtherPicker = (event: Event) => {

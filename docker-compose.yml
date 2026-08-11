@@ -10,6 +10,8 @@ services:
     restart: unless-stopped
     environment:
       VOTE_IMAGE_ASSET_ORIGIN: ${VOTE_IMAGE_ASSET_ORIGIN:-}
+      VOTE_CONNECT_ORIGINS: ${VOTE_CONNECT_ORIGINS:-}
+      VOTE_MEDIA_ORIGINS: ${VOTE_MEDIA_ORIGINS:-}
     # 统计分析（可选，默认关闭）。每家一个独立变量，填了谁就启用谁，可同时启用多家：
     # environment:
     #   ANALYTICS_GA4_ID: G-XXXXXXXXXX                    # Google Analytics 4 衡量 ID

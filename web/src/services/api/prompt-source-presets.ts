@@ -24,6 +24,14 @@ export function createPromptSource(source?: Partial<PromptSource>): PromptSource
 }
 
 export const DEFAULT_PROMPT_SOURCES: PromptSource[] = [
+    {
+        id: "vote-123uq-image",
+        name: "123UQ Image 场景模板",
+        url: "/prompts/123uq-image.json?v=2026-08-11-1",
+        homepage: "https://github.com/hanbaba00/123uq-image/tree/cab9db80f76258194c159417bb82e6d05e30da21",
+        enabled: true,
+        builtIn: true,
+    },
     registrySource("banana-prompt-quicker", "Banana Prompt Quicker", "https://glidea.github.io/banana-prompt-quicker/"),
     registrySource("davidwu-gpt-image2-prompts", "DavidWu GPT Image 2", "https://github.com/davidwuw0811-boop/awesome-gpt-image2-prompts"),
     registrySource("awesome-gpt-image", "Awesome GPT Image", "https://github.com/ZeroLu/awesome-gpt-image"),
