@@ -212,6 +212,15 @@ function resolveRequestSize(quality: string | undefined, size: string) {
     throw new Error(apiText("invalidImageSizeFormat"));
 }
 
+export function resolveVoteImageRequestPlan(size: string) {
+    const outputSize = resolveRequestSize(undefined, size);
+    if (!outputSize) return { sourceSize: undefined, outputSize: undefined };
+    const output = parseImageDimensions(outputSize);
+    if (!output) throw new Error(apiText("invalidImageSizeFormat"));
+    const sourceSize = resolveSize(undefined, `${output.width}:${output.height}`);
+    return { sourceSize, outputSize: sourceSize === outputSize ? undefined : outputSize };
+}
+
 function resolveGeminiImageConfig(config: AiConfig) {
     const value = config.size.trim();
     const dimensions = parseImageDimensions(value);
@@ -731,7 +740,7 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     if (isVoteImageGateway(requestConfig)) {
-        const requestSize = resolveRequestSize(undefined, config.size);
+        const requestPlan = resolveVoteImageRequestPlan(config.size);
         try {
             const payload = await requestSub2ApiImageTask(
                 { ...requestConfig, model: VOTE_IMAGE_MODEL },
@@ -740,11 +749,12 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                     model: VOTE_IMAGE_MODEL,
                     prompt: withSystemPrompt(requestConfig, prompt),
                     n: 1,
-                    ...(requestSize ? { size: requestSize } : {}),
+                    quality: "low",
+                    ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
                     response_format: "b64_json",
                     output_format: IMAGE_OUTPUT_FORMAT,
                 },
-                { signal: options?.signal, context: options?.taskContext },
+                { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize },
             );
             return parseImagePayload(payload as ImageApiResponse);
         } catch (error) {
@@ -812,18 +822,19 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     if (isVoteImageGateway(requestConfig)) {
         if (mask) throw new Error(apiText("maskModelUnsupported"));
-        const requestSize = resolveRequestSize(undefined, config.size);
+        const requestPlan = resolveVoteImageRequestPlan(config.size);
         const formData = new FormData();
         formData.set("model", VOTE_IMAGE_MODEL);
         formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
         formData.set("n", "1");
+        formData.set("quality", "low");
         formData.set("response_format", "b64_json");
         formData.set("output_format", IMAGE_OUTPUT_FORMAT);
-        if (requestSize) formData.set("size", requestSize);
+        if (requestPlan.sourceSize) formData.set("size", requestPlan.sourceSize);
         const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
         files.forEach((file) => formData.append("image", file));
         try {
-            const payload = await requestSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, "/images/edits/async", formData, { signal: options?.signal, context: options?.taskContext });
+            const payload = await requestSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, "/images/edits/async", formData, { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize });
             return parseImagePayload(payload as ImageApiResponse);
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));

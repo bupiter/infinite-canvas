@@ -138,6 +138,17 @@ export default function CanvasPage() {
     return <InfiniteCanvasPage />;
 }
 
+async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<unknown>) {
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.max(1, Math.min(items.length, concurrency)) }, async () => {
+        while (nextIndex < items.length) {
+            const item = items[nextIndex++];
+            await worker(item);
+        }
+    });
+    await Promise.all(workers);
+}
+
 function InfiniteCanvasPage() {
     const { message, modal } = App.useApp();
     const { t } = useTranslation();
@@ -2131,7 +2142,7 @@ function InfiniteCanvasPage() {
 
             try {
                 if (mode === "image") {
-                    const count = isVoteImageRequest(generationConfig) ? 1 : getGenerationCount(generationConfig.count);
+                    const count = getGenerationCount(generationConfig.count);
                     const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
                     const isImageNode = sourceNode?.type === CanvasNodeType.Image;
                     const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content;
@@ -2209,8 +2220,10 @@ function InfiniteCanvasPage() {
                     let hasSuccess = false;
                     let hasFailure = false;
                     let firstError = "";
-                    await Promise.all(
-                        imageIds.map(async (imageId) => {
+                    await runWithConcurrency(
+                        imageIds,
+                        isVoteImageRequest(generationConfig) ? 1 : imageIds.length,
+                        async (imageId) => {
                             try {
                                 const image = referenceImages.length
                                     ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: rootId, imageId } }).then((items) => items[0])
@@ -2253,7 +2266,7 @@ function InfiniteCanvasPage() {
                                 setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, images: node.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails } : image)) } } : node)));
                             }
                             return false;
-                        }),
+                        },
                     );
                     if (rootId !== nodeId) finishGenerationRequest(rootId, controller);
                     if (controller.signal.aborted) {

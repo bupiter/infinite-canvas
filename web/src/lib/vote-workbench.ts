@@ -13,6 +13,10 @@ export type VoteWorkbenchQueryPreferences = {
     theme?: "light" | "dark";
 };
 
+function normalizeVoteImageCount(value: string | undefined) {
+    return String(Math.max(1, Math.min(10, Math.floor(Math.abs(Number(value)) || 1))));
+}
+
 export function isEmbeddedWorkbench() {
     const embedded = new URLSearchParams(window.location.search).get("ui_mode") === "embedded";
     if (embedded) sessionStorage.setItem(EMBEDDED_SESSION_KEY, "1");
@@ -53,9 +57,9 @@ export function normalizeVoteWorkbenchConfig(config: AiConfig): AiConfig {
         textModel: "",
         audioModel: "",
         models: [VOTE_MODEL_VALUE],
-        quality: "auto",
-        count: "1",
-        canvasImageCount: "1",
+        quality: "low",
+        count: normalizeVoteImageCount(config.count),
+        canvasImageCount: normalizeVoteImageCount(config.canvasImageCount || config.count),
     };
 }
 

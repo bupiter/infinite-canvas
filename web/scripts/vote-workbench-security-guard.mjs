@@ -57,13 +57,13 @@ assert(html.includes('src="/theme-bootstrap.js"'), "theme bootstrap must be load
 assert(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/i.test(html), "HTML must not contain inline scripts");
 assert(server.includes("validatedAssetOrigin(process.env.VOTE_IMAGE_ASSET_ORIGIN)"), "object storage must use one validated asset origin");
 assert(!server.includes("connect-src https:"), "CSP must not use a broad HTTPS source wildcard");
-assert(nginx.match(/include \/etc\/nginx\/snippets\/vote-security-headers\.conf;/g)?.length === 3, "every production Nginx route must include security headers");
+assert(nginx.match(/include \/etc\/nginx\/snippets\/vote-security-headers\.conf;/g)?.length === 5, "every production Nginx route must include security headers");
 assert(nginxHeaders.includes("default-src 'self'"), "production CSP must default to same-origin resources");
 assert(nginxHeaders.includes("__VOTE_IMAGE_ASSET_ORIGIN__"), "production CSP must use the validated object storage placeholder");
 assert(dockerfile.includes("nginx-security-headers.conf"), "production image must install the CSP header snippet");
 assert(prebuiltDockerfile.includes("COPY web/dist /usr/share/nginx/html"), "low-memory production packaging must use the verified prebuilt frontend");
 assert(entrypoint.includes("VOTE_IMAGE_ASSET_ORIGIN must be one HTTPS origin without a path"), "production startup must reject unsafe asset origins");
-assert(compose.includes("build:\n      context: ."), "production compose must build the Vote fork");
+assert(/build:\r?\n      context: \./.test(compose), "production compose must build the Vote fork");
 assert(!compose.includes("basketikun/infinite-canvas:latest"), "production compose must never deploy the drifting upstream latest image");
 assert(imageTasks.includes("rememberCompletedTaskSources(task.id"), "completed tasks must remain recoverable until their images are persisted");
 assert(imageTasks.includes('operation: path === "/images/edits/async" ? "edit" : "generation"'), "pending task records must retain their operation type");

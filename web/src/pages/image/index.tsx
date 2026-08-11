@@ -104,7 +104,7 @@ export default function ImagePage() {
 
     const model = effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
-    const generationCount = isVoteImageRequest({ ...effectiveConfig, model }) ? 1 : Math.max(1, Math.min(10, Number(config.count) || 1));
+    const generationCount = Math.max(1, Math.min(10, Number(config.count) || 1));
 
     useEffect(() => {
         if (!running || !startedAt) return;
@@ -206,9 +206,8 @@ export default function ImagePage() {
         const batchStartedAt = performance.now();
         setStartedAt(batchStartedAt);
 
-        const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot));
-
-        const result = await Promise.allSettled(tasks);
+        const tasks = Array.from({ length: generationCount }, (_, index) => () => runGenerationSlot(index, snapshot));
+        const result = isVoteImageRequest({ ...snapshot.config, model }) ? await settleSequentially(tasks) : await Promise.allSettled(tasks.map((task) => task()));
         const successImages = result.filter((item): item is PromiseFulfilledResult<GeneratedImage> => item.status === "fulfilled").map((item) => item.value);
         const successCount = successImages.length;
         const failCount = generationCount - successCount;
@@ -880,6 +879,18 @@ function moveListItem<T>(items: T[], index: number, offset: number) {
     const next = [...items];
     [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
     return next;
+}
+
+async function settleSequentially<T>(tasks: Array<() => Promise<T>>): Promise<PromiseSettledResult<T>[]> {
+    const results: PromiseSettledResult<T>[] = [];
+    for (const task of tasks) {
+        try {
+            results.push({ status: "fulfilled", value: await task() });
+        } catch (reason) {
+            results.push({ status: "rejected", reason });
+        }
+    }
+    return results;
 }
 
 function ReferenceOrderButtons({ index, total, onMove }: { index: number; total: number; onMove: (offset: number) => void }) {
