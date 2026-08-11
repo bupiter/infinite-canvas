@@ -54,9 +54,10 @@ assert(configStore.includes('audioModel: normalizeModelForCapability(config.audi
 assert(modelPicker.includes('const current = !capability || options.includes(requested) ? requested : ""'), "the model picker must hide stale models with the wrong capability");
 assert(modelPicker.includes("options.length ? t(\"settingsPanels.model.select\") : emptyModelLabel(config, capability)"), "the model picker trigger must explain which missing capability to configure");
 const embeddedPrompts = JSON.parse(embeddedPromptText);
-assert(promptPresets.includes('url: "/prompts/123uq-image.json?v=2026-08-11-1"'), "the Vote prompt collection must load from the same origin");
+assert(promptPresets.includes('url: "/prompts/123uq-image.json?v=2026-08-11-2"'), "the Vote prompt collection must load from the same origin");
 assert(Array.isArray(embeddedPrompts) && embeddedPrompts.length === 4, "the embedded Vote prompt collection must contain four scene templates");
 assert(new Set(embeddedPrompts.map((item) => item.id)).size === embeddedPrompts.length, "embedded prompt ids must be unique");
+assert(embeddedPrompts.every((item) => item.coverUrl?.startsWith("/prompts/assets/123uq-image/") && item.coverUrl.endsWith(".webp")), "embedded prompts must use same-origin WebP covers");
 assert(embeddedPrompts.every((item) => item.title?.trim() && item.prompt?.trim() && item.description?.includes("两张参考图")), "embedded prompts must be usable and disclose their two-reference requirement");
 
 const queryKeys = [...query.matchAll(/params\.get\("([^"]+)"\)/g)].map((match) => match[1]);
