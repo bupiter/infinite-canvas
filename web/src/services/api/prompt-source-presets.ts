@@ -27,7 +27,7 @@ export const DEFAULT_PROMPT_SOURCES: PromptSource[] = [
     {
         id: "vote-123uq-image",
         name: "123UQ Image 场景模板",
-        url: "/prompts/123uq-image.json?v=2026-08-11-1",
+        url: "/prompts/123uq-image.json?v=2026-08-11-2",
         homepage: "https://github.com/hanbaba00/123uq-image/tree/cab9db80f76258194c159417bb82e6d05e30da21",
         enabled: true,
         builtIn: true,
