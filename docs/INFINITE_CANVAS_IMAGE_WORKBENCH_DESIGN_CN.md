@@ -248,8 +248,8 @@ Cloudflare R2 私有桶可以继续由 Sub2API 服务端使用，但原生 Canva
 ### 15.3 原生功能
 
 - 视频和音频入口可见，并在配置相应能力模型后调用对应渠道。
-- 本机 Agent 仅连接 `http://127.0.0.1:17371` 或 `http://localhost:17371`，HTTP 请求与 EventSource 均可用，其他回环端口和 WebSocket 不放行。
-- 插件和自定义模型脚本使用 Blob ES module 执行，在生产 CSP 下可用且不依赖 `unsafe-eval`。
+- Agent 入口保持可见；生产 CSP 不放行本机 loopback 地址，本版本不把 Agent 连接列为生产可用项。
+- 插件和自定义模型脚本入口保持可见；生产 CSP 不开放 `blob:` 或 `unsafe-eval`，本版本不把动态代码执行列为生产可用项。
 - 图片蒙版、裁剪、拆分和下载可用。
 - 桌面和移动端无关键控件重叠。
 - 内嵌模式隐藏重复导航，独立模式显示完整导航。

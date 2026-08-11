@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { extname, isAbsolute, join, normalize, relative } from "node:path";
 
 const root = "/app/dist";
 const assetOrigin = validatedAssetOrigin(process.env.VOTE_IMAGE_ASSET_ORIGIN);
@@ -31,14 +31,26 @@ const contentTypes = {
 };
 
 createServer((request, response) => {
-    const pathname = decodeURIComponent(new URL(request.url || "/", "http://localhost").pathname);
-    const candidate = normalize(join(root, pathname));
-    const file = candidate.startsWith(root) && existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(root, "index.html");
-    response.setHeader("Content-Type", contentTypes[extname(file)] || "application/octet-stream");
     response.setHeader("Content-Security-Policy", contentSecurityPolicy);
     response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+
+    let pathname;
+    try {
+        pathname = decodeURIComponent(new URL(request.url || "/", "http://localhost").pathname);
+    } catch {
+        response.statusCode = 400;
+        response.setHeader("Content-Type", "text/plain; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end("Bad Request");
+        return;
+    }
+    const candidate = normalize(join(root, pathname));
+    const relativePath = relative(root, candidate);
+    const isInsideRoot = relativePath && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+    const file = isInsideRoot && existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(root, "index.html");
+    response.setHeader("Content-Type", contentTypes[extname(file)] || "application/octet-stream");
     response.setHeader("Cache-Control", file.includes(`${root}/assets/`) ? "public, max-age=31536000, immutable" : "no-store");
     createReadStream(file).pipe(response);
 }).listen(3000, "0.0.0.0");

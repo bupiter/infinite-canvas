@@ -217,41 +217,44 @@ export const useConfigStore = create<ConfigStore>()(
             partialize: (state) => ({ config: state.config, webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
-                const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
-                const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
-                const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
-                const models = modelOptionsFromChannels(channels);
-                return {
-                    ...current,
-                    webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
-                    config: {
-                        ...config,
-                        channelMode: "local",
-                        apiFormat: normalizeApiFormat(config.apiFormat),
-                        channels,
-                        models,
-                        imageModel: normalizeModelForCapability(config.imageModel || config.model, channels, "image"),
-                        videoModel: normalizeModelForCapability(config.videoModel, channels, "video"),
-                        textModel: normalizeModelForCapability(config.textModel || config.model, channels, "text"),
-                        audioModel: normalizeModelForCapability(config.audioModel, channels, "audio"),
-                        audioVoice: config.audioVoice || defaultConfig.audioVoice,
-                        audioFormat: config.audioFormat || defaultConfig.audioFormat,
-                        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
-                        audioInstructions: config.audioInstructions || "",
-                        reasoningEffort: config.reasoningEffort || "auto",
-                        videoSeconds: config.videoSeconds || "6",
-                        vquality: config.vquality || "720",
-                        videoGenerateAudio: config.videoGenerateAudio || "true",
-                        videoWatermark: config.videoWatermark || "false",
-                        canvasImageCount: config.canvasImageCount || "3",
-                    },
-                };
+                return { ...current, ...normalizeConfigState(persistedState.config, persistedState.webdav) };
             },
         },
     ),
 );
+
+export function normalizeConfigState(configInput: unknown, webdavInput: unknown): Pick<ConfigStore, "config" | "webdav"> {
+    const persistedConfig = configInput && typeof configInput === "object" && !Array.isArray(configInput) ? (configInput as Partial<AiConfig>) : {};
+    const persistedWebdav = webdavInput && typeof webdavInput === "object" && !Array.isArray(webdavInput) ? (webdavInput as Partial<WebdavSyncConfig>) : {};
+    const config: AiConfig = { ...defaultConfig, ...persistedConfig };
+    if (!Array.isArray(persistedConfig.channels)) config.channels = [];
+    const channels = normalizeChannels(config);
+    const models = modelOptionsFromChannels(channels);
+    return {
+        webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
+        config: {
+            ...config,
+            channelMode: "local",
+            apiFormat: normalizeApiFormat(config.apiFormat),
+            channels,
+            models,
+            imageModel: normalizeModelForCapability(config.imageModel || config.model, channels, "image"),
+            videoModel: normalizeModelForCapability(config.videoModel, channels, "video"),
+            textModel: normalizeModelForCapability(config.textModel || config.model, channels, "text"),
+            audioModel: normalizeModelForCapability(config.audioModel, channels, "audio"),
+            audioVoice: config.audioVoice || defaultConfig.audioVoice,
+            audioFormat: config.audioFormat || defaultConfig.audioFormat,
+            audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+            audioInstructions: config.audioInstructions || "",
+            reasoningEffort: config.reasoningEffort || "auto",
+            videoSeconds: config.videoSeconds || "6",
+            vquality: config.vquality || "720",
+            videoGenerateAudio: config.videoGenerateAudio || "true",
+            videoWatermark: config.videoWatermark || "false",
+            canvasImageCount: config.canvasImageCount || "3",
+        },
+    };
+}
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
