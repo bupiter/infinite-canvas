@@ -91,6 +91,7 @@ assert(html.includes('src="/theme-bootstrap.js"'), "theme bootstrap must be load
 assert(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/i.test(html), "HTML must not contain inline scripts");
 assert(server.includes("validatedAssetOrigin(process.env.VOTE_IMAGE_ASSET_ORIGIN)"), "object storage must use one validated asset origin");
 assert(!server.includes("connect-src https:"), "CSP must not use a broad HTTPS source wildcard");
+assert(server.includes('".webp": "image/webp"'), "the low-memory static server must return the correct MIME type for prompt covers");
 assert(nginx.match(/include \/etc\/nginx\/snippets\/vote-security-headers\.conf;/g)?.length === 5, "every production Nginx route must include security headers");
 assert(nginxHeaders.includes("default-src 'self'"), "production CSP must default to same-origin resources");
 assert(nginxHeaders.includes("__VOTE_IMAGE_ASSET_ORIGIN__"), "production CSP must use the validated object storage placeholder");
