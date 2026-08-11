@@ -42,6 +42,7 @@ type AsyncImageTaskPayload = {
 type TaskRequestOptions = {
     signal?: AbortSignal;
     context?: Sub2ApiImageTaskContext;
+    outputSize?: string;
 };
 
 export type VoteImageConnectionFailureReason = "authentication_failed" | "group_not_image_only" | "service_unavailable";
@@ -79,6 +80,7 @@ export async function requestSub2ApiImageTask(config: AiConfig, path: "/images/g
         headers: {
             Authorization: `Bearer ${config.apiKey}`,
             ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+            ...(options?.outputSize ? { "X-Sub2api-Image-Output-Size": options.outputSize, "X-Sub2api-Image-Resize-Filter": "lanczos" } : {}),
         },
         signal: options?.signal,
         validateStatus: (status) => status === 202,
