@@ -1,10 +1,7 @@
-import type { AiConfig, ModelChannel } from "@/stores/use-config-store";
+import type { AiConfig } from "@/stores/use-config-store";
 
-export const VOTE_WORKBENCH = true;
 export const VOTE_API_ORIGIN = "https://image.vote520.com";
 export const VOTE_IMAGE_MODEL = "gpt-image-2";
-export const VOTE_CHANNEL_ID = "vote-image";
-export const VOTE_MODEL_VALUE = `${VOTE_CHANNEL_ID}::${VOTE_IMAGE_MODEL}`;
 export const VOTE_DATA_NOTICE_STORAGE_KEY = "infinite-canvas:vote-data-notice:v1";
 const EMBEDDED_SESSION_KEY = "vote-canvas:embedded";
 
@@ -13,8 +10,12 @@ export type VoteWorkbenchQueryPreferences = {
     theme?: "light" | "dark";
 };
 
-function normalizeVoteImageCount(value: string | undefined) {
-    return String(Math.max(1, Math.min(10, Math.floor(Math.abs(Number(value)) || 1))));
+export function isVoteImageBaseUrl(value: string) {
+    try {
+        return new URL(value.trim()).origin === VOTE_API_ORIGIN;
+    } catch {
+        return false;
+    }
 }
 
 export function isEmbeddedWorkbench() {
@@ -33,41 +34,10 @@ export function readVoteWorkbenchQueryPreferences(search = window.location.searc
     };
 }
 
-export function normalizeVoteWorkbenchConfig(config: AiConfig): AiConfig {
-    const existing = config.channels.find((channel) => channel.id === VOTE_CHANNEL_ID);
-    const channel: ModelChannel = {
-        id: VOTE_CHANNEL_ID,
-        name: "Vote Image",
-        baseUrl: VOTE_API_ORIGIN,
-        apiKey: existing?.apiKey || "",
-        apiFormat: "openai",
-        models: [{ name: VOTE_IMAGE_MODEL, capability: "image" }],
-    };
-    return {
-        ...config,
-        channelMode: "local",
-        baseUrl: VOTE_API_ORIGIN,
-        apiKey: channel.apiKey,
-        voteImageKeyVerified: Boolean(channel.apiKey && config.voteImageKeyVerified),
-        apiFormat: "openai",
-        channels: [channel],
-        model: VOTE_MODEL_VALUE,
-        imageModel: VOTE_MODEL_VALUE,
-        videoModel: "",
-        textModel: "",
-        audioModel: "",
-        models: [VOTE_MODEL_VALUE],
-        quality: "low",
-        count: normalizeVoteImageCount(config.count),
-        canvasImageCount: normalizeVoteImageCount(config.canvasImageCount || config.count),
-    };
-}
-
 export function configWithoutApiKey(config: AiConfig): AiConfig {
     return {
         ...config,
         apiKey: "",
-        voteImageKeyVerified: false,
         channels: config.channels.map((channel) => ({ ...channel, apiKey: "" })),
     };
 }

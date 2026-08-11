@@ -48,12 +48,18 @@ export const usePromptSourceStore = create<PromptSourceStore>()(
             partialize: (state) => ({ sources: state.sources, schedule: state.schedule }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<PromptSourceStore>;
-                const savedSources = Array.isArray(persistedState.sources) ? persistedState.sources : [];
-                const enabledById = new Map(savedSources.map((source) => [source.id, source.enabled]));
-                const builtIn = DEFAULT_PROMPT_SOURCES.map((source) => ({ ...source, enabled: enabledById.get(source.id) ?? source.enabled }));
-                const custom = savedSources.filter((source) => !source.builtIn).map((source) => createPromptSource(source));
-                return { ...current, sources: [...builtIn, ...custom], schedule: { ...defaultSchedule, ...(persistedState.schedule || {}) } };
+                return { ...current, ...normalizePromptSourceState(persistedState.sources, persistedState.schedule) };
             },
         },
     ),
 );
+
+export function normalizePromptSourceState(sourcesInput: unknown, scheduleInput: unknown): Pick<PromptSourceStore, "sources" | "schedule"> {
+    const savedSources = Array.isArray(sourcesInput) ? sourcesInput.filter((source): source is PromptSource => Boolean(source && typeof source === "object")) : [];
+    const enabledById = new Map(savedSources.map((source) => [source.id, source.enabled]));
+    const builtInIds = new Set(DEFAULT_PROMPT_SOURCES.map((source) => source.id));
+    const builtIn = DEFAULT_PROMPT_SOURCES.map((source) => ({ ...source, enabled: enabledById.get(source.id) ?? source.enabled }));
+    const custom = savedSources.filter((source) => !source.builtIn && !builtInIds.has(source.id)).map((source) => createPromptSource(source));
+    const schedule = scheduleInput && typeof scheduleInput === "object" && !Array.isArray(scheduleInput) ? (scheduleInput as Partial<PromptSourceSchedule>) : {};
+    return { sources: [...builtIn, ...custom], schedule: { ...defaultSchedule, ...schedule } };
+}

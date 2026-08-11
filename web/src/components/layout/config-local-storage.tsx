@@ -1,10 +1,11 @@
-import { Alert, Button, Progress, Spin } from "antd";
+import { Alert, App, Button, Progress, Spin } from "antd";
 import type { TFunction } from "i18next";
-import { Database, HardDrive, Layers3, RefreshCw } from "lucide-react";
+import { Database, HardDrive, Layers3, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { readLocalStorageUsage, type LocalStorageUsage } from "@/services/local-storage-usage";
+import { clearVoteWorkbenchData } from "@/services/local-data-reset";
 
 const storeLabelKeys: Record<string, string> = {
     app_state: "appState",
@@ -17,9 +18,11 @@ const storeLabelKeys: Record<string, string> = {
 };
 
 export function ConfigLocalStorage({ active }: { active: boolean }) {
+    const { message, modal } = App.useApp();
     const { t } = useTranslation();
     const [usage, setUsage] = useState<LocalStorageUsage | null>(null);
     const [loading, setLoading] = useState(false);
+    const [clearing, setClearing] = useState(false);
     const [error, setError] = useState("");
 
     const refresh = useCallback(async () => {
@@ -41,6 +44,26 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
     const indexedDbBytes = usage?.contentBytes ?? 0;
     const percent = usage ? Math.min(100, (usage.usage / usage.quota) * 100) : 0;
 
+    const clearAll = () => {
+        modal.confirm({
+            title: t("config.localStorage.clearAllTitle"),
+            content: t("config.localStorage.clearAllDescription"),
+            okText: t("config.localStorage.clearAll"),
+            okButtonProps: { danger: true },
+            cancelText: t("common.cancel"),
+            onOk: async () => {
+                setClearing(true);
+                try {
+                    await clearVoteWorkbenchData();
+                    window.location.reload();
+                } catch (reason) {
+                    message.error(reason instanceof Error ? reason.message : t("config.localStorage.clearFailed"));
+                    setClearing(false);
+                }
+            },
+        });
+    };
+
     return (
         <div className="space-y-3">
             <section className="rounded-lg border border-stone-200 p-4 dark:border-stone-800">
@@ -52,9 +75,14 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                         </div>
                         <div className="mt-1 text-xs text-stone-500">{t("config.localStorage.description")}</div>
                     </div>
-                    <Button icon={<RefreshCw className="size-4" />} loading={loading} onClick={() => void refresh()}>
-                        {t("config.localStorage.refresh")}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button icon={<RefreshCw className="size-4" />} loading={loading} disabled={clearing} onClick={() => void refresh()}>
+                            {t("config.localStorage.refresh")}
+                        </Button>
+                        <Button danger icon={<Trash2 className="size-4" />} loading={clearing} onClick={clearAll}>
+                            {t("config.localStorage.clearAll")}
+                        </Button>
+                    </div>
                 </div>
                 {error ? <Alert className="mt-4" type="error" showIcon message={t("config.localStorage.readFailed")} description={error} /> : null}
                 {!usage && loading ? (

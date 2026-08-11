@@ -1,20 +1,36 @@
-import { Menu } from "lucide-react";
+import { Bot, Menu } from "lucide-react";
+import { Button, Tooltip } from "antd";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
+import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAgentStore } from "@/stores/use-agent-store";
 
 export function AppTopNav() {
     const { t } = useTranslation();
     const { pathname } = useLocation();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const autoConnectRef = useRef(false);
+    const agentToken = useAgentStore((state) => state.token);
+    const agentEnabled = useAgentStore((state) => state.enabled);
+    const agentConnected = useAgentStore((state) => state.connected);
+    const connectAgent = useAgentStore((state) => state.connectAgent);
+    const togglePanel = useAgentStore((state) => state.togglePanel);
+    const panelOpen = useAgentStore((state) => state.panelOpen);
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
     const slug = pathname.split("/").filter(Boolean)[0];
     const activeToolSlug = navigationTools.some((tool) => tool.slug === slug) ? (slug as NavigationToolSlug) : undefined;
+
+    useEffect(() => {
+        if (autoConnectRef.current || agentEnabled || agentConnected || !agentToken.trim()) return;
+        autoConnectRef.current = true;
+        connectAgent({ silent: true });
+    }, [agentConnected, agentEnabled, agentToken, connectAgent]);
 
     return (
         <>
@@ -67,6 +83,9 @@ export function AppTopNav() {
                         </div>
 
                         <div className="my-auto flex h-9 min-w-0 items-center justify-end gap-2 justify-self-end whitespace-nowrap">
+                            <Tooltip title={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}>
+                                <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" icon={<Bot className="size-4" />} onClick={togglePanel} aria-label={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")} />
+                            </Tooltip>
                             <UserStatusActions />
                         </div>
                     </div>
@@ -74,6 +93,7 @@ export function AppTopNav() {
             ) : null}
 
             <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
+            <AppConfigModal />
         </>
     );
 }

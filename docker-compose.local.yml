@@ -8,4 +8,6 @@ services:
       - "3000:3000"
     environment:
       VOTE_IMAGE_ASSET_ORIGIN: ${VOTE_IMAGE_ASSET_ORIGIN:-}
+      VOTE_CONNECT_ORIGINS: ${VOTE_CONNECT_ORIGINS:-}
+      VOTE_MEDIA_ORIGINS: ${VOTE_MEDIA_ORIGINS:-}
     restart: unless-stopped

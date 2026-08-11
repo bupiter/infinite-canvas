@@ -58,10 +58,13 @@ function withCacheBust(url: string) {
 
 // Install or replace a plugin from a URL and enable it immediately.
 // bustCache bypasses HTTP/CDN caches during upgrades while persisting a clean URL without the timestamp query.
-export async function installPluginFromUrl(url: string, opts?: { official?: boolean; bustCache?: boolean }): Promise<CanvasPlugin> {
-    void url;
-    void opts;
-    throw new Error("Plugins are disabled in Vote Infinite Canvas");
+export async function installPluginFromUrl(url: string, opts?: { official?: boolean; bustCache?: boolean }) {
+    const source = await fetchPluginSource(opts?.bustCache ? withCacheBust(url) : url);
+    const plugin = await evaluatePluginSource(source);
+    deactivatePlugin(plugin.id); // Replace the previous version.
+    usePluginStore.getState().upsert({ id: plugin.id, name: plugin.name || plugin.id, version: plugin.version || "0.0.0", description: plugin.description, url, source, enabled: true, official: opts?.official });
+    activatePlugin(plugin);
+    return plugin;
 }
 
 export async function updatePlugin(record: InstalledPlugin) {
@@ -90,7 +93,23 @@ let loaded = false;
 
 // Load installed and enabled plugins at application startup.
 export async function ensurePluginsLoaded() {
+    if (loaded) return;
     loaded = true;
+    await usePluginStore.persist.rehydrate();
+    await loadLocalPlugins(); // Discover disabled local plugins first, then activate all enabled records.
+    const records = usePluginStore.getState().plugins.filter((record) => record.enabled);
+    await Promise.all(
+        records.map(async (record) => {
+            try {
+                // Local plugins use the latest output; other plugins use their cached source.
+                const source = record.local ? await fetchPluginSource(withCacheBust(record.url)) : record.source;
+                activatePlugin(await evaluatePluginSource(source));
+            } catch (error) {
+                console.error(`[plugin] Failed to load: ${record.id}`, error);
+            }
+        }),
+    );
+    await loadDevPlugins();
 }
 
 // Discover local plugins from web/public/plugins, add them disabled, and expose them in the manager without a URL.

@@ -1,17 +1,23 @@
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [panel, query, startup, configFile, canvasExport, html, server, imageTasks, imageStorage, imageTools, canvasPage, sidePanel, toolbar, zoomControls, userActions, nginx, nginxHeaders, dockerfile, prebuiltDockerfile, compose, entrypoint] = await Promise.all([
-    read("src/components/layout/vote-workbench-config-panel.tsx"),
+const [channelEditor, voteValidation, localReset, localStoragePanel, configStore, modelPicker, promptPresets, embeddedPromptText, query, startup, clientRoot, configFile, canvasExport, html, server, imageStorage, canvasPage, sidePanel, toolbar, zoomControls, userActions, nginx, nginxHeaders, dockerfile, prebuiltDockerfile, compose, entrypoint] = await Promise.all([
+    read("src/components/layout/channel-editor-drawer.tsx"),
+    read("src/services/api/vote-image-channel.ts"),
+    read("src/services/local-data-reset.ts"),
+    read("src/components/layout/config-local-storage.tsx"),
+    read("src/stores/use-config-store.ts"),
+    read("src/components/model-picker.tsx"),
+    read("src/services/api/prompt-source-presets.ts"),
+    read("public/prompts/123uq-image.json"),
     read("src/lib/vote-workbench.ts"),
     read("src/main.tsx"),
+    read("src/components/layout/client-root-init.tsx"),
     read("src/services/config-file.ts"),
     read("src/lib/canvas/canvas-export.ts"),
     read("index.html"),
     read("local-static-server.mjs"),
-    read("src/services/api/sub2api-image-task.ts"),
     read("src/services/image-storage.ts"),
-    read("src/components/canvas/canvas-image-toolbar-tools.tsx"),
     read("src/pages/canvas/project.tsx"),
     read("src/components/canvas/canvas-side-panel.tsx"),
     read("src/components/canvas/canvas-toolbar.tsx"),
@@ -29,16 +35,29 @@ const assert = (condition, message) => {
     if (!condition) throw new Error(message);
 };
 
-assert(panel.includes("visibilityToggle={false}"), "API Key must never have a plaintext visibility toggle");
-assert(panel.includes("firstUsePolicy"), "first-use confirmation must include the abuse policy notice");
-assert(panel.includes("validationControllerRef.current?.abort()"), "changing or closing the Key form must cancel stale connection validation");
-assert(panel.includes('onChange={(event) => updateDraftApiKey(event.target.value)}'), "editing the Key must use the validation-cancelling update path");
-assert(
-    /if \(validationControllerRef\.current !== controller\) return;[\s\S]{0,240}setApiKey\(draftApiKey\.trim\(\), true\)/.test(panel),
-    "stale connection validation must not save an old API Key",
-);
-assert(imageTasks.includes("signal,"), "connection validation must pass AbortSignal to the gateway request");
-assert(imageTasks.includes("models.size === 1 && models.has(VOTE_IMAGE_MODEL)"), "connection validation must reject mixed or non-image groups");
+assert(channelEditor.includes("Input.Password") && channelEditor.includes("visibilityToggle={false}"), "API keys must remain masked with no plaintext visibility toggle");
+assert(channelEditor.includes("if (!isVoteImageBaseUrl(normalized.baseUrl))"), "Vote validation must be scoped to the Vote image origin so third-party providers remain native");
+assert(channelEditor.includes("firstUseData") && channelEditor.includes("firstUseModeration") && channelEditor.includes("firstUseBilling") && channelEditor.includes("firstUsePolicy"), "first-time Vote use must disclose local data, moderation, billing, and abuse policy");
+assert(channelEditor.includes("await validateVoteImageChannel(normalized, controller.signal)"), "Vote providers must validate their key before saving");
+assert(/await validateVoteImageChannel\(normalized, controller\.signal\);[\s\S]{0,360}onSave\(/.test(channelEditor), "Vote providers must not save before validation succeeds");
+assert(voteValidation.includes('buildApiUrl(channel.baseUrl, "/models")'), "Vote key validation must call the provider models endpoint");
+assert(voteValidation.includes("models.size !== 1 || !models.has(VOTE_IMAGE_MODEL)"), "Vote key validation must require exactly the gpt-image-2 model");
+assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
+assert(localReset.includes('["infinite-canvas", "infinite-canvas-plugins"]'), "local reset must remove primary and plugin IndexedDB data");
+assert(localReset.includes("localStorage.clear()") && localReset.includes("sessionStorage.clear()"), "local reset must remove browser credentials and transient Vote state");
+assert(localStoragePanel.includes("clearVoteWorkbenchData()") && localStoragePanel.includes("clearAllDescription"), "settings must expose a confirmed one-click local data reset");
+assert(!configStore.includes("const fallbackModel = capability"), "missing capability models must not fall back to defaultConfig");
+assert(configStore.includes('return selectableModelsByCapability(config, capability)[0] || ""'), "capability resolution must return a configured model or an explicit empty value");
+assert(configStore.includes("return findChannelModel(config, value)?.channel || null"), "unknown models must not fall back to the first provider");
+assert(/model: channel \? modelOptionName\(value\) : ""[\s\S]{0,180}baseUrl: channel\?\.baseUrl \|\| ""[\s\S]{0,120}apiKey: channel\?\.apiKey \|\| ""/.test(configStore), "unresolved request models must clear model, endpoint, and API key");
+assert(configStore.includes('audioModel: normalizeModelForCapability(config.audioModel, channels, "audio")'), "persisted Vote-only settings must not inject the default audio model");
+assert(modelPicker.includes('const current = !capability || options.includes(requested) ? requested : ""'), "the model picker must hide stale models with the wrong capability");
+assert(modelPicker.includes("options.length ? t(\"settingsPanels.model.select\") : emptyModelLabel(config, capability)"), "the model picker trigger must explain which missing capability to configure");
+const embeddedPrompts = JSON.parse(embeddedPromptText);
+assert(promptPresets.includes('url: "/prompts/123uq-image.json?v=2026-08-11-1"'), "the Vote prompt collection must load from the same origin");
+assert(Array.isArray(embeddedPrompts) && embeddedPrompts.length === 4, "the embedded Vote prompt collection must contain four scene templates");
+assert(new Set(embeddedPrompts.map((item) => item.id)).size === embeddedPrompts.length, "embedded prompt ids must be unique");
+assert(embeddedPrompts.every((item) => item.title?.trim() && item.prompt?.trim() && item.description?.includes("两张参考图")), "embedded prompts must be usable and disclose their two-reference requirement");
 
 const queryKeys = [...query.matchAll(/params\.get\("([^"]+)"\)/g)].map((match) => match[1]);
 assert(queryKeys.includes("theme") && queryKeys.includes("lang"), "theme and lang query preferences must be supported");
@@ -47,6 +66,7 @@ assert(
     `unexpected query parameter read: ${queryKeys.join(", ")}`,
 );
 assert(startup.includes("readVoteWorkbenchQueryPreferences"), "query preferences must be applied during startup");
+assert(clientRoot.includes('new Set(["baseurl", "apikey", "token", "user_id", "src_url"])'), "sensitive configuration must be removed from URL parameters");
 assert(configFile.includes("configWithoutApiKey(config)"), "configuration export must remove API keys");
 assert(!canvasExport.includes("use-config-store") && !canvasExport.includes("apiKey"), "canvas project exports must never read configuration or API keys");
 assert(canvasExport.includes("getImageBlob(storageKey)"), "canvas project exports must package persisted image blobs");
@@ -60,18 +80,15 @@ assert(!server.includes("connect-src https:"), "CSP must not use a broad HTTPS s
 assert(nginx.match(/include \/etc\/nginx\/snippets\/vote-security-headers\.conf;/g)?.length === 5, "every production Nginx route must include security headers");
 assert(nginxHeaders.includes("default-src 'self'"), "production CSP must default to same-origin resources");
 assert(nginxHeaders.includes("__VOTE_IMAGE_ASSET_ORIGIN__"), "production CSP must use the validated object storage placeholder");
+assert(nginxHeaders.includes("__VOTE_CONNECT_ORIGINS__") && nginxHeaders.includes("__VOTE_MEDIA_ORIGINS__"), "production CSP must use exact runtime origin allowlists");
 assert(dockerfile.includes("nginx-security-headers.conf"), "production image must install the CSP header snippet");
 assert(prebuiltDockerfile.includes("COPY web/dist /usr/share/nginx/html"), "low-memory production packaging must use the verified prebuilt frontend");
 assert(entrypoint.includes("VOTE_IMAGE_ASSET_ORIGIN must be one HTTPS origin without a path"), "production startup must reject unsafe asset origins");
+assert(entrypoint.includes("must contain only space-separated HTTPS origins without paths"), "production startup must reject unsafe runtime allowlist entries");
 assert(/build:\r?\n      context: \./.test(compose), "production compose must build the Vote fork");
 assert(!compose.includes("basketikun/infinite-canvas:latest"), "production compose must never deploy the drifting upstream latest image");
-assert(imageTasks.includes("rememberCompletedTaskSources(task.id"), "completed tasks must remain recoverable until their images are persisted");
-assert(imageTasks.includes('operation: path === "/images/edits/async" ? "edit" : "generation"'), "pending task records must retain their operation type");
-assert(!/payload\.status !== "completed"[\s\S]{0,160}removeTask\(task\.id\)/.test(imageTasks), "completed tasks must not be removed before image persistence");
-assert(imageStorage.includes("acknowledgeSub2ApiImageSource(input)"), "successful IndexedDB persistence must acknowledge the completed task");
-assert(imageStorage.includes("await store.setItem(storageKey, blob)"), "generated images must be persisted as IndexedDB blobs before remote task acknowledgement");
+assert(imageStorage.includes("await store.setItem(storageKey, blob)"), "generated images must be persisted as IndexedDB blobs");
 assert(imageStorage.includes("await store.getItem<Blob>(storageKey)"), "persisted images must remain readable without their expired signed URL");
-assert(imageTools.includes('!VOTE_WORKBENCH || tool.id !== "maskEdit"'), "unsupported mask editing must remain hidden in Vote mode");
 assert(canvasPage.includes('className="relative flex h-full min-h-0 overflow-hidden"'), "canvas layout must anchor the mobile overlay panel");
 assert(sidePanel.includes("absolute inset-y-0 left-0") && sidePanel.includes("sm:relative"), "the side panel must overlay rather than squeeze the mobile canvas");
 assert(sidePanel.includes("border-r pt-16 sm:pt-0"), "the mobile overlay panel must not overlap the canvas top bar");

@@ -3,7 +3,6 @@ import localforage from "localforage";
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { readImageMeta } from "@/lib/image-utils";
-import { acknowledgeSub2ApiImageSource } from "@/services/api/sub2api-image-task";
 
 export type UploadedImage = {
     url: string;
@@ -26,7 +25,6 @@ export async function uploadImage(input: string | Blob): Promise<UploadedImage> 
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     const meta = await readImageMeta(url);
-    if (typeof input === "string") await acknowledgeSub2ApiImageSource(input);
     return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
 }
 
