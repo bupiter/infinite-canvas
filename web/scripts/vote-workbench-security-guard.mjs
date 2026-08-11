@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [channelEditor, voteValidation, localReset, localStoragePanel, configStore, modelPicker, promptPresets, embeddedPromptText, query, startup, clientRoot, configFile, canvasExport, html, server, imageStorage, canvasPage, sidePanel, toolbar, zoomControls, userActions, nginx, nginxHeaders, dockerfile, prebuiltDockerfile, compose, entrypoint] = await Promise.all([
+const [channelEditor, voteValidation, imageApi, imageTask, imagePage, localReset, localStoragePanel, configStore, modelPicker, promptPresets, embeddedPromptText, query, startup, clientRoot, configFile, canvasExport, html, server, imageStorage, canvasPage, sidePanel, toolbar, zoomControls, userActions, nginx, nginxHeaders, dockerfile, prebuiltDockerfile, compose, entrypoint] = await Promise.all([
     read("src/components/layout/channel-editor-drawer.tsx"),
     read("src/services/api/vote-image-channel.ts"),
+    read("src/services/api/image.ts"),
+    read("src/services/api/sub2api-image-task.ts"),
+    read("src/pages/image/index.tsx"),
     read("src/services/local-data-reset.ts"),
     read("src/components/layout/config-local-storage.tsx"),
     read("src/stores/use-config-store.ts"),
@@ -43,6 +46,16 @@ assert(/await validateVoteImageChannel\(normalized, controller\.signal\);[\s\S]{
 assert(voteValidation.includes('buildApiUrl(channel.baseUrl, "/models")'), "Vote key validation must call the provider models endpoint");
 assert(voteValidation.includes("models.size !== 1 || !models.has(VOTE_IMAGE_MODEL)"), "Vote key validation must require exactly the gpt-image-2 model");
 assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
+assert(imageApi.includes('quality: "low"'), "Vote image generation must use the economical 1K upstream quality");
+assert(imageApi.includes("outputSize,") && imageApi.includes("sourceSize: resolveSize"), "Vote image generation must separate source composition size from exact output size");
+assert(!imageApi.includes("sourceSize === outputSize ? undefined : outputSize"), "1K Vote output must still be normalized to exact pixels");
+assert(imageTask.includes('"X-Sub2api-Image-Output-Size"') && imageTask.includes('"X-Sub2api-Image-Resize-Filter": "lanczos"'), "Vote image tasks must request server-side Lanczos output");
+assert(imageTask.includes("enqueueForApiKey") && imageTask.includes("IMAGE_TASK_ALREADY_ACTIVE"), "Vote image tasks must queue instead of failing the next submission");
+assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
+assert(imageTask.includes("sub2api_image_tasks") && imageTask.includes("resumeSub2ApiImageTask"), "accepted Vote tasks must remain recoverable after reload");
+assert(imagePage.includes("setResults((current) => [...current, ...slots])"), "new image batches must append visible pending slots without replacing active work");
+assert(imagePage.includes('disabled={!canGenerate}'), "the image workbench must allow another submission while generation is active");
+assert(!imagePage.includes('disabled={!canGenerate || running}'), "active image generation must not lock the submit button");
 assert(localReset.includes('["infinite-canvas", "infinite-canvas-plugins"]'), "local reset must remove primary and plugin IndexedDB data");
 assert(localReset.includes("localStorage.clear()") && localReset.includes("sessionStorage.clear()"), "local reset must remove browser credentials and transient Vote state");
 assert(localStoragePanel.includes("clearVoteWorkbenchData()") && localStoragePanel.includes("clearAllDescription"), "settings must expose a confirmed one-click local data reset");
