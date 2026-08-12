@@ -51,7 +51,9 @@ assert(imageApi.includes("outputSize,") && imageApi.includes("sourceSize: resolv
 assert(!imageApi.includes("sourceSize === outputSize ? undefined : outputSize"), "1K Vote output must still be normalized to exact pixels");
 assert(imageTask.includes('"X-Sub2api-Image-Output-Size"') && imageTask.includes('"X-Sub2api-Image-Resize-Filter": "lanczos"'), "Vote image tasks must request server-side Lanczos output");
 assert(imageTask.includes("enqueueForApiKey") && imageTask.includes("IMAGE_TASK_ALREADY_ACTIVE"), "Vote image tasks must queue instead of failing the next submission");
-assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
+assert(/if \(!isActiveTaskConflict\(error\)\)\s*throw(?:\s+normalizeTaskError\(error,\s*["']submit["']\)|\s+error);/.test(imageTask), "Vote image POST retries must be limited to the explicit active-task conflict");
+assert(imageTask.includes("findReusableTask") && imageTask.includes("sameTaskContext") && imageTask.includes("canReplaceStoredTask"), "Vote image retries must resume the exact stored task before creating a billable replacement");
+assert(imageTask.includes("function isPendingTaskStatus") && imageTask.includes('status === "queued"') && imageTask.includes('status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
 assert(imageTask.includes("sub2api_image_tasks") && imageTask.includes("resumeSub2ApiImageTask"), "accepted Vote tasks must remain recoverable after reload");
 assert(imagePage.includes("setResults((current) => [...current, ...slots])"), "new image batches must append visible pending slots without replacing active work");
 assert(imagePage.includes('disabled={!canGenerate}'), "the image workbench must allow another submission while generation is active");

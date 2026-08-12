@@ -19,8 +19,12 @@ const imageLogStore = localforage.createInstance({ name: "infinite-canvas", stor
 const videoLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
 const objectUrls = new Map<string, string>();
 
+const GENERATED_IMAGE_DOWNLOAD_TIMEOUT_MS = 30000;
+const GENERATED_IMAGE_DOWNLOAD_RETRIES = 3;
+
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
-    const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
+    const blob = typeof input === "string" ? await downloadGeneratedImage(input) : input;
+    await assertDecodableImage(blob);
     const storageKey = `image:${nanoid()}`;
     await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
@@ -28,6 +32,61 @@ export async function uploadImage(input: string | Blob): Promise<UploadedImage> 
     const meta = await readImageMeta(url);
     if (typeof input === "string") await acknowledgeSub2ApiImageSource(input);
     return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
+}
+
+async function downloadGeneratedImage(url: string) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= GENERATED_IMAGE_DOWNLOAD_RETRIES; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), GENERATED_IMAGE_DOWNLOAD_TIMEOUT_MS);
+        try {
+            const response = await fetch(url, { signal: controller.signal, cache: "no-store" });
+            if (!response.ok) {
+                const error = new Error(`图片下载失败（HTTP ${response.status}）`);
+                if (![408, 425, 429, 500, 502, 503, 504].includes(response.status)) {
+                    lastError = error;
+                    break;
+                }
+                if (attempt >= GENERATED_IMAGE_DOWNLOAD_RETRIES) throw error;
+                lastError = error;
+            } else {
+                const blob = await response.blob();
+                if (!blob.size) throw new Error("图片下载失败：响应为空");
+                const contentType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() || blob.type.toLowerCase();
+                if (contentType && !contentType.startsWith("image/")) {
+                    throw new Error(`图片下载失败：响应类型为 ${contentType}`);
+                }
+                return blob;
+            }
+        } catch (error) {
+            lastError = error instanceof DOMException && error.name === "AbortError" ? new Error("图片下载超时，请稍后重试") : error;
+            if (attempt >= GENERATED_IMAGE_DOWNLOAD_RETRIES) throw lastError;
+        } finally {
+            window.clearTimeout(timeout);
+        }
+        await new Promise<void>((resolve) => window.setTimeout(resolve, Math.min(4000, 500 * 2 ** attempt)));
+    }
+    throw lastError instanceof Error ? lastError : new Error("图片下载失败，请稍后重试");
+}
+
+async function assertDecodableImage(blob: Blob) {
+    if (!blob.size) throw new Error("图片内容为空，无法显示");
+    const url = URL.createObjectURL(blob);
+    try {
+        if (typeof createImageBitmap === "function") {
+            const bitmap = await createImageBitmap(blob);
+            bitmap.close();
+            return;
+        }
+        await new Promise<void>((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve();
+            image.onerror = () => reject(new Error("图片内容无法解码，请稍后重试"));
+            image.src = url;
+        });
+    } finally {
+        URL.revokeObjectURL(url);
+    }
 }
 
 export async function resolveImageUrl(storageKey?: string, fallback = "") {

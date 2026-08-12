@@ -13,6 +13,11 @@ sanitize_id() {
 
 GA4_ID=$(sanitize_id "${ANALYTICS_GA4_ID:-}")
 BAIDU_ID=$(sanitize_id "${ANALYTICS_BAIDU_ID:-}")
+IMAGE_ORIGIN="${VITE_IMAGE_API_ORIGIN:-${IMAGE_API_ORIGIN:-}}"
+if [ -n "$IMAGE_ORIGIN" ] && ! printf '%s' "$IMAGE_ORIGIN" | grep -Eq '^https?://[A-Za-z0-9.:-]+$'; then
+  echo "IMAGE_API_ORIGIN must be an origin without a path" >&2
+  exit 1
+fi
 
 ASSET_ORIGIN=""
 if [ -n "${VOTE_IMAGE_ASSET_ORIGIN:-}" ]; then
@@ -51,6 +56,7 @@ sed -i \
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__RUNTIME_CONFIG__ = {
   ANALYTICS_GA4_ID: "${GA4_ID}",
-  ANALYTICS_BAIDU_ID: "${BAIDU_ID}"
+  ANALYTICS_BAIDU_ID: "${BAIDU_ID}",
+  IMAGE_API_ORIGIN: "${IMAGE_ORIGIN}"
 };
 EOF

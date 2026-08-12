@@ -8,7 +8,7 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import { isVoteImageGateway, listPendingSub2ApiImageTasks, requestSub2ApiImageTask, resumeSub2ApiImageTask, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
+import { isVoteImageGateway, listPendingSub2ApiImageTasks, requestSub2ApiImageTask, resumeSub2ApiImageTask, Sub2ApiImageTaskError, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -335,6 +335,13 @@ function readAxiosError(error: unknown, fallback: string) {
     }
     if (error instanceof DOMException && error.name === "AbortError") return apiText("requestCanceled");
     return error instanceof Error ? readApiErrorMessage(error.message) || error.message : fallback;
+}
+
+function wrapImageRequestError(error: unknown, fallback: string) {
+    // Keep the async gateway phase/reason so the canvas can distinguish
+    // endpoint, polling, upstream, and result failures.
+    if (error instanceof Sub2ApiImageTaskError) return error;
+    return new Error(readAxiosError(error, fallback));
 }
 
 function readStatusError(status: number | undefined, fallback: string) {
@@ -755,7 +762,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
             );
             return parseImagePayload(payload as ImageApiResponse);
         } catch (error) {
-            throw new Error(readAxiosError(error, apiText("requestFailed")));
+            throw wrapImageRequestError(error, apiText("requestFailed"));
         }
     }
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
@@ -776,7 +783,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
             });
             return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));
         } catch (error) {
-            throw new Error(readAxiosError(error, apiText("requestFailed")));
+            throw wrapImageRequestError(error, apiText("requestFailed"));
         }
     }
     if (requestConfig.apiFormat === "gemini") {
@@ -810,7 +817,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         const images = parseImagePayload(response.data);
         return images;
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("requestFailed")));
+        throw wrapImageRequestError(error, apiText("requestFailed"));
     }
 }
 
@@ -837,7 +844,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
             const payload = await requestSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, "/images/edits/async", formData, { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize });
             return parseImagePayload(payload as ImageApiResponse);
         } catch (error) {
-            throw new Error(readAxiosError(error, apiText("requestFailed")));
+            throw wrapImageRequestError(error, apiText("requestFailed"));
         }
     }
     const script = resolveModelScript(config, config.model || config.imageModel);
@@ -944,7 +951,7 @@ export async function resumeImageTask(config: AiConfig, task: StoredSub2ApiImage
         const payload = await resumeSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, task, options?.signal);
         return parseImagePayload(payload as ImageApiResponse);
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("requestFailed")));
+        throw wrapImageRequestError(error, apiText("requestFailed"));
     }
 }
 
