@@ -2256,16 +2256,34 @@ function InfiniteCanvasPage() {
                         return;
                     }
                     if (hasFailure) {
-                        message.error(hasSuccess ? t("canvas.projectPage.partialFailed") : firstError || t("canvas.projectPage.generationFailed"));
+                        const detail = firstError ? `: ${firstError}` : "";
+                        message.error(hasSuccess ? `${t("canvas.projectPage.partialFailed")}${detail}` : firstError || t("canvas.projectPage.generationFailed"));
                     }
+                    const failureDetails = firstError || t("canvas.projectPage.allFailed");
                     setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === nodeId && isConfigNode
-                                ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: hasSuccess ? undefined : t("canvas.projectPage.generationFailed") } }
-                                : node.id === rootId
-                                  ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: hasSuccess ? undefined : t("canvas.projectPage.allFailed") } }
-                                    : node,
-                        ),
+                        prev.map((node) => {
+                            if (node.id === nodeId && isConfigNode) {
+                                return {
+                                    ...node,
+                                    metadata: {
+                                        ...node.metadata,
+                                        status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
+                                        errorDetails: hasFailure ? failureDetails : undefined,
+                                    },
+                                };
+                            }
+                            if (node.id === rootId) {
+                                return {
+                                    ...node,
+                                    metadata: {
+                                        ...node.metadata,
+                                        status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
+                                        errorDetails: hasFailure ? failureDetails : undefined,
+                                    },
+                                };
+                            }
+                            return node;
+                        }),
                     );
                     return;
                 }
