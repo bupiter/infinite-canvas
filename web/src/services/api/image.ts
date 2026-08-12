@@ -210,8 +210,13 @@ export function resolveVoteImageRequestPlan(size: string) {
     if (!outputSize) return { sourceSize: undefined, outputSize: undefined };
     const output = parseImageDimensions(outputSize);
     if (!output) throw new Error(apiText("invalidImageSizeFormat"));
+    const isLandscape = output.width > output.height;
+    const isPortrait = output.height > output.width;
+    // Pro reverse proxies are reliable with the three canonical source sizes;
+    // the gateway performs the exact requested output resize afterwards.
+    const sourceSize = isLandscape ? "1536x1024" : isPortrait ? "1024x1536" : "1024x1024";
     return {
-        sourceSize: resolveSize(undefined, `${output.width}:${output.height}`),
+        sourceSize,
         // Pro reverse proxies control native pixels, so 1K also needs exact normalization.
         outputSize,
     };
@@ -758,7 +763,14 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                     response_format: "b64_json",
                     output_format: IMAGE_OUTPUT_FORMAT,
                 },
-                { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal, timeout: VOTE_SYNC_IMAGE_TIMEOUT_MS },
+                {
+                    headers: {
+                        ...aiHeaders(requestConfig, "application/json"),
+                        ...(requestPlan.outputSize ? { "X-Sub2api-Image-Output-Size": requestPlan.outputSize, "X-Sub2api-Image-Resize-Filter": "lanczos" } : {}),
+                    },
+                    signal: options?.signal,
+                    timeout: VOTE_SYNC_IMAGE_TIMEOUT_MS,
+                },
             );
             return parseImagePayload(response.data);
         } catch (error) {
@@ -844,7 +856,14 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
             const response = await axios.post<ImageApiResponse>(
                 aiApiUrl(requestConfig, "/images/edits"),
                 formData,
-                { headers: aiHeaders(requestConfig), signal: options?.signal, timeout: VOTE_SYNC_IMAGE_TIMEOUT_MS },
+                {
+                    headers: {
+                        ...aiHeaders(requestConfig),
+                        ...(requestPlan.outputSize ? { "X-Sub2api-Image-Output-Size": requestPlan.outputSize, "X-Sub2api-Image-Resize-Filter": "lanczos" } : {}),
+                    },
+                    signal: options?.signal,
+                    timeout: VOTE_SYNC_IMAGE_TIMEOUT_MS,
+                },
             );
             return parseImagePayload(response.data);
         } catch (error) {
