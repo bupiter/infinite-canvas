@@ -8,7 +8,7 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import { isVoteImageGateway, listPendingSub2ApiImageTasks, requestSub2ApiImageTask, resumeSub2ApiImageTask, Sub2ApiImageTaskError, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
+import { isVoteImageGateway, listPendingSub2ApiImageTasks, resumeSub2ApiImageTask, Sub2ApiImageTaskError, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -122,6 +122,7 @@ const IMAGE_MAX_PIXELS = 8294400;
 const IMAGE_MAX_EDGE = 3840;
 const IMAGE_MAX_RATIO = 3;
 const IMAGE_OUTPUT_FORMAT = "png";
+const VOTE_SYNC_IMAGE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const GEMINI_SUPPORTED_RATIOS = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"];
 const GEMINI_IMAGE_SIZE_BY_QUALITY: Record<string, string> = { low: "1K", medium: "2K", high: "4K", standard: "1K", hd: "2K" };
@@ -209,8 +210,13 @@ export function resolveVoteImageRequestPlan(size: string) {
     if (!outputSize) return { sourceSize: undefined, outputSize: undefined };
     const output = parseImageDimensions(outputSize);
     if (!output) throw new Error(apiText("invalidImageSizeFormat"));
+    const isLandscape = output.width > output.height;
+    const isPortrait = output.height > output.width;
+    // Pro reverse proxies are reliable with the three canonical source sizes;
+    // the gateway performs the exact requested output resize afterwards.
+    const sourceSize = isLandscape ? "1536x1024" : isPortrait ? "1024x1536" : "1024x1024";
     return {
-        sourceSize: resolveSize(undefined, `${output.width}:${output.height}`),
+        sourceSize,
         // Pro reverse proxies control native pixels, so 1K also needs exact normalization.
         outputSize,
     };
@@ -745,9 +751,8 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         const requestPlan = resolveVoteImageRequestPlan(config.size);
         const background = normalizeBackground(config.background);
         try {
-            const payload = await requestSub2ApiImageTask(
-                { ...requestConfig, model: VOTE_IMAGE_MODEL },
-                "/images/generations/async",
+            const response = await axios.post<ImageApiResponse>(
+                aiApiUrl(requestConfig, "/images/generations"),
                 {
                     model: VOTE_IMAGE_MODEL,
                     prompt: withSystemPrompt(requestConfig, prompt),
@@ -758,9 +763,16 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                     response_format: "b64_json",
                     output_format: IMAGE_OUTPUT_FORMAT,
                 },
-                { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize },
+                {
+                    headers: {
+                        ...aiHeaders(requestConfig, "application/json"),
+                        ...(requestPlan.outputSize ? { "X-Sub2api-Image-Output-Size": requestPlan.outputSize, "X-Sub2api-Image-Resize-Filter": "lanczos" } : {}),
+                    },
+                    signal: options?.signal,
+                    timeout: VOTE_SYNC_IMAGE_TIMEOUT_MS,
+                },
             );
-            return parseImagePayload(payload as ImageApiResponse);
+            return parseImagePayload(response.data);
         } catch (error) {
             throw wrapImageRequestError(error, apiText("requestFailed"));
         }
@@ -841,8 +853,19 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
         files.forEach((file) => formData.append("image", file));
         try {
-            const payload = await requestSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, "/images/edits/async", formData, { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize });
-            return parseImagePayload(payload as ImageApiResponse);
+            const response = await axios.post<ImageApiResponse>(
+                aiApiUrl(requestConfig, "/images/edits"),
+                formData,
+                {
+                    headers: {
+                        ...aiHeaders(requestConfig),
+                        ...(requestPlan.outputSize ? { "X-Sub2api-Image-Output-Size": requestPlan.outputSize, "X-Sub2api-Image-Resize-Filter": "lanczos" } : {}),
+                    },
+                    signal: options?.signal,
+                    timeout: VOTE_SYNC_IMAGE_TIMEOUT_MS,
+                },
+            );
+            return parseImagePayload(response.data);
         } catch (error) {
             throw wrapImageRequestError(error, apiText("requestFailed"));
         }
