@@ -55,6 +55,9 @@ assert(imageApi.includes("return image;") && imageApi.includes("normalizeVoteIma
 assert(!imageApi.includes("isTransientImageError") && !imageApi.includes("return request();"), "Vote image failures must not resubmit the complete generation request");
 assert(!imageTask.includes("enqueueForApiKey"), "Vote image task submission must not wait for an earlier task to finish");
 assert(!imageTask.includes("IMAGE_TASK_ALREADY_ACTIVE"), "Vote image task submission must never retry the complete request after a conflict");
+assert(configStore.includes('VOTE_IMAGE_BASE_URL = "https://image.vote520.com"') && configStore.includes('VOTE_TEXT_BASE_URL = "https://ai.vote520.com"'), "Vote image and text channels must be available by default");
+assert(configStore.includes("createVoteImageChannel()") && configStore.includes("createVoteTextChannel()"), "persisted configurations must receive missing Vote channels without losing existing channels");
+assert(nginxHeaders.includes("https://image.vote520.com https://ai.vote520.com"), "Canvas CSP must allow both Vote image and text API origins");
 assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
 assert(imageTask.includes("sub2api_image_tasks") && imageTask.includes("resumeSub2ApiImageTask"), "accepted Vote tasks must remain recoverable after reload");
 assert(imagePage.includes("setResults((current) => [...current, ...slots])"), "new image batches must append visible pending slots without replacing active work");

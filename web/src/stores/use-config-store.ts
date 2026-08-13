@@ -65,6 +65,10 @@ export type ConfigTabKey = "channels" | "preferences" | "prompt-sources" | "webd
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
+export const VOTE_IMAGE_CHANNEL_ID = "vote-image";
+export const VOTE_TEXT_CHANNEL_ID = "vote-text";
+export const VOTE_IMAGE_BASE_URL = "https://image.vote520.com";
+export const VOTE_TEXT_BASE_URL = "https://ai.vote520.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 const ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 
@@ -73,26 +77,12 @@ export const defaultConfig: AiConfig = {
     baseUrl: OPENAI_BASE_URL,
     apiKey: "",
     apiFormat: "openai",
-    channels: [
-        {
-            id: "default",
-            name: i18n.t("config.channels.defaultName"),
-            baseUrl: OPENAI_BASE_URL,
-            apiKey: "",
-            apiFormat: "openai",
-            models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
-            ],
-        },
-    ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    channels: [createVoteImageChannel(), createVoteTextChannel()],
+    model: `${VOTE_IMAGE_CHANNEL_ID}::gpt-image-2`,
+    imageModel: `${VOTE_IMAGE_CHANNEL_ID}::gpt-image-2`,
+    videoModel: "",
+    textModel: `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-terra`,
+    audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -103,7 +93,7 @@ export const defaultConfig: AiConfig = {
     videoWatermark: "false",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
+    models: [`${VOTE_IMAGE_CHANNEL_ID}::gpt-image-2`, `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-terra`, `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-sol`],
     quality: "auto",
     size: "1:1",
     background: "",
@@ -238,9 +228,9 @@ export function normalizeConfigState(configInput: unknown, webdavInput: unknown)
             apiFormat: normalizeApiFormat(config.apiFormat),
             channels,
             models,
-            imageModel: normalizeModelForCapability(config.imageModel || config.model, channels, "image"),
+            imageModel: normalizeModelForCapability(config.imageModel || config.model, channels, "image") || voteChannelModel(channels, VOTE_IMAGE_CHANNEL_ID, VOTE_IMAGE_BASE_URL, "gpt-image-2"),
             videoModel: normalizeModelForCapability(config.videoModel, channels, "video"),
-            textModel: normalizeModelForCapability(config.textModel || config.model, channels, "text"),
+            textModel: normalizeModelForCapability(config.textModel || config.model, channels, "text") || voteChannelModel(channels, VOTE_TEXT_CHANNEL_ID, VOTE_TEXT_BASE_URL, "gpt-5.6-terra"),
             audioModel: normalizeModelForCapability(config.audioModel, channels, "audio"),
             audioVoice: config.audioVoice || defaultConfig.audioVoice,
             audioFormat: config.audioFormat || defaultConfig.audioFormat,
@@ -375,7 +365,47 @@ function normalizeChannels(config: AiConfig) {
             }),
         );
     }
+    if (!channels.some((channel) => channel.id === VOTE_IMAGE_CHANNEL_ID || sameOrigin(channel.baseUrl, VOTE_IMAGE_BASE_URL))) channels.push(createVoteImageChannel());
+    if (!channels.some((channel) => channel.id === VOTE_TEXT_CHANNEL_ID || sameOrigin(channel.baseUrl, VOTE_TEXT_BASE_URL))) channels.push(createVoteTextChannel());
     return channels;
+}
+
+function createVoteImageChannel(): ModelChannel {
+    return {
+        id: VOTE_IMAGE_CHANNEL_ID,
+        name: "Vote 生图",
+        baseUrl: VOTE_IMAGE_BASE_URL,
+        apiKey: "",
+        apiFormat: "openai",
+        models: [{ name: "gpt-image-2", capability: "image" }],
+    };
+}
+
+function createVoteTextChannel(): ModelChannel {
+    return {
+        id: VOTE_TEXT_CHANNEL_ID,
+        name: "Vote 文本模型",
+        baseUrl: VOTE_TEXT_BASE_URL,
+        apiKey: "",
+        apiFormat: "openai",
+        models: [
+            { name: "gpt-5.6-terra", capability: "text" },
+            { name: "gpt-5.6-sol", capability: "text" },
+        ],
+    };
+}
+
+function sameOrigin(left: string, right: string) {
+    try {
+        return new URL(left).origin.toLowerCase() === new URL(right).origin.toLowerCase();
+    } catch {
+        return false;
+    }
+}
+
+function voteChannelModel(channels: ModelChannel[], id: string, origin: string, model: string) {
+    const channel = channels.find((item) => item.id === id) || channels.find((item) => sameOrigin(item.baseUrl, origin));
+    return channel ? encodeChannelModel(channel.id, model) : "";
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
