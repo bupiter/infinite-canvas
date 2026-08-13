@@ -7,6 +7,8 @@ description: Implemented changes that still need manual verification
 
 The current release needs manual verification in these areas:
 
+- Vote async task recovery: refreshing the Canvas or changing loaded configuration while a task is queued, processing, or completing must not strand the node in a loading state. A completed R2 result must remain recoverable until it is attached to the project, then its local task record must be removed. R2 results selected for 2K/4K output must be readable by browser canvas under CORS, and any genuine terminal error must remain visible instead of being replaced by a generic all-images-failed message.
+
 - Vote synchronous image fallback: `image.vote520.com` + `gpt-image-2` must submit new generations through the standard synchronous endpoint with an injected composition constraint matching the selected ratio. A transient connection, 408, 409, 429, or 5xx failure may retry once; deterministic request and moderation errors must not retry. Once any valid image is returned, 1K must display it unchanged, while 2K/4K may apply high-quality browser resizing. Wrong orientation or resize failure must fall back to the returned source image instead of marking the slot failed.
 
 - Native provider images: settings must support multiple providers and models plus the native image, video, audio, text, Agent, plugin, quality, size, batch, and image-editing controls. Every provider except the explicitly selected `image.vote520.com` + `gpt-image-2` route must call its configured standard compatible endpoint without hard-coded Vote host, model, or quality values, and must not create or poll Sub2API-specific async tasks. Config exports must omit API keys, and sensitive URL parameters must be removed without changing configuration.

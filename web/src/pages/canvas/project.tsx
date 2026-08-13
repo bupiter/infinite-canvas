@@ -6,6 +6,7 @@ import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
 import { isVoteImageRequest, listPendingImageTasks, requestEdit, requestGeneration, requestImageQuestion, resumeImageTask } from "@/services/api/image";
+import { acknowledgeSub2ApiImageSource } from "@/services/api/sub2api-image-task";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -251,7 +252,7 @@ function InfiniteCanvasPage() {
     const selectionBoxRef = useRef(selectionBox);
     const pendingConnectionCreateRef = useRef(pendingConnectionCreate);
     const generationRequestsRef = useRef(new Map<string, CanvasGenerationRequest>());
-    const recoveredImageTaskIdsRef = useRef(new Set<string>());
+    const recoveringImageTasksRef = useRef(new Map<string, symbol>());
 
     const createHistoryEntry = useCallback(
         (): CanvasHistoryEntry => ({
@@ -404,19 +405,21 @@ function InfiniteCanvasPage() {
         const recoveryConfig = { ...effectiveConfig, model: effectiveConfig.imageModel || effectiveConfig.model };
         if (!projectLoaded || !isVoteImageRequest(recoveryConfig)) return;
         let disposed = false;
+        const recoveryToken = Symbol("image-task-recovery");
         void listPendingImageTasks(recoveryConfig).then((tasks) =>
             Promise.allSettled(
                 tasks
                     .filter((task) => task.context?.surface === "canvas" && task.context.projectId === projectId && task.context.targetNodeId && task.context.imageId)
                     .map(async (task) => {
-                        if (recoveredImageTaskIdsRef.current.has(task.id)) return;
-                        recoveredImageTaskIdsRef.current.add(task.id);
+                        if (recoveringImageTasksRef.current.has(task.id)) return;
+                        recoveringImageTasksRef.current.set(task.id, recoveryToken);
                         const targetNodeId = task.context!.targetNodeId!;
                         const imageId = task.context!.imageId!;
                         try {
                             const image = (await resumeImageTask(recoveryConfig, task))[0];
                             if (!image || disposed) return;
-                            const uploaded = await uploadImage(image.dataUrl);
+                            // Keep the task recoverable until its image is attached to the project.
+                            const uploaded = await uploadImage(image.dataUrl, { acknowledgeSource: false });
                             if (disposed) return;
                             const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                             const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
@@ -428,6 +431,7 @@ function InfiniteCanvasPage() {
                                     return { ...node, ...imageSize, metadata: { ...node.metadata, ...imageMetadata(uploaded), images, primaryImageId: imageId, status: NODE_STATUS_SUCCESS, errorDetails: undefined } };
                                 }),
                             );
+                            await acknowledgeSub2ApiImageSource(image.dataUrl);
                         } catch (error) {
                             if (disposed) return;
                             const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
@@ -436,11 +440,18 @@ function InfiniteCanvasPage() {
                                     ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails, images: node.metadata?.images?.map((item) => item.id === imageId ? { ...item, status: NODE_STATUS_ERROR, errorDetails } : item) } }
                                     : node),
                             );
+                        } finally {
+                            if (recoveringImageTasksRef.current.get(task.id) === recoveryToken) recoveringImageTasksRef.current.delete(task.id);
                         }
                     }),
             ),
         );
-        return () => { disposed = true; };
+        return () => {
+            disposed = true;
+            recoveringImageTasksRef.current.forEach((token, taskId) => {
+                if (token === recoveryToken) recoveringImageTasksRef.current.delete(taskId);
+            });
+        };
     }, [effectiveConfig.apiKey, effectiveConfig.baseUrl, effectiveConfig.imageModel, effectiveConfig.model, projectId, projectLoaded, t]);
 
     useEffect(() => {
@@ -2263,7 +2274,7 @@ function InfiniteCanvasPage() {
                             node.id === nodeId && isConfigNode
                                 ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: hasSuccess ? undefined : t("canvas.projectPage.generationFailed") } }
                                 : node.id === rootId
-                                  ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: hasSuccess ? undefined : t("canvas.projectPage.allFailed") } }
+                                  ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: hasSuccess ? undefined : firstError || t("canvas.projectPage.allFailed") } }
                                     : node,
                         ),
                     );

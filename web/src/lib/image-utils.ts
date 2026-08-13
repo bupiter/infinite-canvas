@@ -47,6 +47,7 @@ export function readImageMeta(dataUrl: string) {
         image.onload = done;
         image.onerror = done;
         setTimeout(done, 3000);
+        if (/^https?:\/\//i.test(dataUrl)) image.crossOrigin = "anonymous";
         image.src = dataUrl;
     });
 }
@@ -69,6 +70,7 @@ function loadImage(source: string) {
         const image = new Image();
         image.onload = () => resolve(image);
         image.onerror = () => reject(new Error(i18n.t("common.imageReadFailed")));
+        if (/^https?:\/\//i.test(source)) image.crossOrigin = "anonymous";
         image.src = source;
     });
 }

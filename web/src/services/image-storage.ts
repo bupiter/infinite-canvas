@@ -19,14 +19,21 @@ const imageLogStore = localforage.createInstance({ name: "infinite-canvas", stor
 const videoLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
 const objectUrls = new Map<string, string>();
 
-export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
-    const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
+export async function uploadImage(input: string | Blob, options?: { acknowledgeSource?: boolean }): Promise<UploadedImage> {
+    let blob: Blob;
+    if (typeof input === "string") {
+        const response = await fetch(input);
+        if (!response.ok) throw new Error(i18n.t("common.imageReadFailed"));
+        blob = await response.blob();
+    } else {
+        blob = input;
+    }
     const storageKey = `image:${nanoid()}`;
     await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     const meta = await readImageMeta(url);
-    if (typeof input === "string") await acknowledgeSub2ApiImageSource(input);
+    if (typeof input === "string" && options?.acknowledgeSource !== false) await acknowledgeSub2ApiImageSource(input);
     return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
 }
 
