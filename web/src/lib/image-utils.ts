@@ -51,6 +51,28 @@ export function readImageMeta(dataUrl: string) {
     });
 }
 
+export async function resizeImageDataUrl(dataUrl: string, width: number, height: number) {
+    const image = await loadImage(dataUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width));
+    canvas.height = Math.max(1, Math.round(height));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error(i18n.t("common.imageReadFailed"));
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+}
+
+function loadImage(source: string) {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error(i18n.t("common.imageReadFailed")));
+        image.src = source;
+    });
+}
+
 export function dataUrlToFile(image: ReferenceImage) {
     const [header, content] = image.dataUrl.split(",", 2);
     const mimeType = header.match(/data:(.*?);base64/)?.[1] || image.type || "image/png";

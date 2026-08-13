@@ -4,11 +4,11 @@ import i18n from "@/i18n";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { nanoid } from "nanoid";
-import { dataUrlToFile } from "@/lib/image-utils";
+import { dataUrlToFile, readImageMeta, resizeImageDataUrl } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import { isVoteImageGateway, listPendingSub2ApiImageTasks, requestSub2ApiImageTask, resumeSub2ApiImageTask, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
+import { isVoteImageGateway, listPendingSub2ApiImageTasks, resumeSub2ApiImageTask, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -122,6 +122,8 @@ const IMAGE_MAX_PIXELS = 8294400;
 const IMAGE_MAX_EDGE = 3840;
 const IMAGE_MAX_RATIO = 3;
 const IMAGE_OUTPUT_FORMAT = "png";
+const VOTE_IMAGE_TIMEOUT_MS = 150_000;
+const VOTE_IMAGE_RETRY_DELAY_MS = 600;
 
 const GEMINI_SUPPORTED_RATIOS = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"];
 const GEMINI_IMAGE_SIZE_BY_QUALITY: Record<string, string> = { low: "1K", medium: "2K", high: "4K", standard: "1K", hd: "2K" };
@@ -206,14 +208,91 @@ function resolveRequestSize(quality: string | undefined, size: string) {
 
 export function resolveVoteImageRequestPlan(size: string) {
     const outputSize = resolveRequestSize(undefined, size);
-    if (!outputSize) return { sourceSize: undefined, outputSize: undefined };
+    if (!outputSize) return { sourceSize: undefined, outputSize: undefined, aspectRatio: undefined, shouldResize: false };
     const output = parseImageDimensions(outputSize);
     if (!output) throw new Error(apiText("invalidImageSizeFormat"));
+    const requestedRatio = size.trim().includes(":") ? parseImageRatio(size.trim()) : output;
+    const aspectRatio = reduceRatio(requestedRatio.width, requestedRatio.height);
     return {
-        sourceSize: resolveSize(undefined, `${output.width}:${output.height}`),
-        // Pro reverse proxies control native pixels, so 1K also needs exact normalization.
+        sourceSize: voteSourceSize(aspectRatio, output.width, output.height),
         outputSize,
+        aspectRatio,
+        shouldResize: Math.max(output.width, output.height) >= 2048,
     };
+}
+
+function reduceRatio(width: number, height: number) {
+    let a = width;
+    let b = height;
+    while (b) [a, b] = [b, a % b];
+    return `${width / a}:${height / a}`;
+}
+
+function voteSourceSize(aspectRatio: string, width: number, height: number) {
+    const presets: Record<string, string> = {
+        "1:1": "1254x1254",
+        "3:2": "1536x1024",
+        "2:3": "1024x1536",
+        "4:3": "1296x976",
+        "3:4": "976x1296",
+        "16:9": "1248x704",
+        "9:16": "704x1248",
+    };
+    return presets[aspectRatio] || resolveSize(undefined, `${width}:${height}`);
+}
+
+export function withVoteImageComposition(prompt: string, aspectRatio: string | undefined) {
+    if (!aspectRatio) return prompt;
+    const { width, height } = parseRatioValue(aspectRatio);
+    const orientation = width === height ? "square" : width > height ? "horizontal landscape" : "vertical portrait";
+    const forbidden = width === height ? "horizontal, landscape, vertical, or portrait" : width > height ? "portrait, vertical, or square" : "landscape, horizontal, or square";
+    const extension = width === height ? "Fill the square canvas with a balanced composition." : width > height ? "Extend meaningful scene content across the full left and right sides." : "Extend meaningful scene content across the full top and bottom sides.";
+    return `Create a strictly ${orientation} image with a ${aspectRatio} composition. The canvas must follow ${aspectRatio}. Do not create a ${forbidden} image. ${extension}\n\n${prompt}`;
+}
+
+async function normalizeVoteImages(images: Array<{ id: string; dataUrl: string }>, plan: ReturnType<typeof resolveVoteImageRequestPlan>) {
+    if (!plan.shouldResize || !plan.outputSize) return images;
+    const target = parseImageDimensions(plan.outputSize);
+    if (!target) return images;
+    return Promise.all(images.map(async (image) => {
+        try {
+            const actual = await readImageMeta(image.dataUrl);
+            const targetOrientation = Math.sign(target.width - target.height);
+            const actualOrientation = Math.sign(actual.width - actual.height);
+            // A square source can be normalized to either direction. Never turn a returned
+            // portrait into landscape (or vice versa); preserving a valid image is the fallback.
+            if (actualOrientation !== 0 && targetOrientation !== 0 && actualOrientation !== targetOrientation) return image;
+            return { ...image, dataUrl: await resizeImageDataUrl(image.dataUrl, target.width, target.height) };
+        } catch {
+            return image;
+        }
+    }));
+}
+
+function isTransientImageError(error: unknown) {
+    if (!axios.isAxiosError(error)) return false;
+    if (!error.response) return true;
+    return error.response.status === 408 || error.response.status === 409 || error.response.status === 429 || error.response.status >= 500;
+}
+
+async function requestVoteImage<T>(request: () => Promise<T>, signal?: AbortSignal) {
+    try {
+        return await request();
+    } catch (error) {
+        if (axios.isCancel(error) || signal?.aborted || !isTransientImageError(error)) throw error;
+        const retryAfterSeconds = axios.isAxiosError(error) ? Number(error.response?.headers?.["retry-after"]) : 0;
+        const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? Math.min(3000, retryAfterSeconds * 1000)
+            : VOTE_IMAGE_RETRY_DELAY_MS;
+        await new Promise<void>((resolve, reject) => {
+            const timer = window.setTimeout(resolve, retryDelay);
+            signal?.addEventListener("abort", () => {
+                window.clearTimeout(timer);
+                reject(new DOMException("Aborted", "AbortError"));
+            }, { once: true });
+        });
+        return request();
+    }
 }
 
 function resolveGeminiImageConfig(config: AiConfig) {
@@ -738,12 +817,11 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         const requestPlan = resolveVoteImageRequestPlan(config.size);
         const background = normalizeBackground(config.background);
         try {
-            const payload = await requestSub2ApiImageTask(
-                { ...requestConfig, model: VOTE_IMAGE_MODEL },
-                "/images/generations/async",
+            const response = await requestVoteImage(() => axios.post<ImageApiResponse>(
+                aiApiUrl(requestConfig, "/images/generations"),
                 {
                     model: VOTE_IMAGE_MODEL,
-                    prompt: withSystemPrompt(requestConfig, prompt),
+                    prompt: withVoteImageComposition(withSystemPrompt(requestConfig, prompt), requestPlan.aspectRatio),
                     n: 1,
                     quality: "low",
                     ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
@@ -751,9 +829,10 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                     response_format: "b64_json",
                     output_format: IMAGE_OUTPUT_FORMAT,
                 },
-                { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize },
-            );
-            return parseImagePayload(payload as ImageApiResponse);
+                { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal, timeout: VOTE_IMAGE_TIMEOUT_MS },
+            ), options?.signal);
+            const images = parseImagePayload(response.data);
+            return normalizeVoteImages(images, requestPlan);
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -824,7 +903,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         const background = normalizeBackground(config.background);
         const formData = new FormData();
         formData.set("model", VOTE_IMAGE_MODEL);
-        formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
+        formData.set("prompt", withVoteImageComposition(withSystemPrompt(requestConfig, requestPrompt), requestPlan.aspectRatio));
         formData.set("n", "1");
         formData.set("quality", "low");
         formData.set("response_format", "b64_json");
@@ -834,8 +913,13 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
         files.forEach((file) => formData.append("image", file));
         try {
-            const payload = await requestSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, "/images/edits/async", formData, { signal: options?.signal, context: options?.taskContext, outputSize: requestPlan.outputSize });
-            return parseImagePayload(payload as ImageApiResponse);
+            const response = await requestVoteImage(() => axios.post<ImageApiResponse>(
+                aiApiUrl(requestConfig, "/images/edits"),
+                formData,
+                { headers: aiHeaders(requestConfig), signal: options?.signal, timeout: VOTE_IMAGE_TIMEOUT_MS },
+            ), options?.signal);
+            const images = parseImagePayload(response.data);
+            return normalizeVoteImages(images, requestPlan);
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }

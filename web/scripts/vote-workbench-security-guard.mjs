@@ -47,9 +47,11 @@ assert(voteValidation.includes('buildApiUrl(channel.baseUrl, "/models")'), "Vote
 assert(voteValidation.includes("models.size !== 1 || !models.has(VOTE_IMAGE_MODEL)"), "Vote key validation must require exactly the gpt-image-2 model");
 assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
 assert(imageApi.includes('quality: "low"'), "Vote image generation must use the economical 1K upstream quality");
-assert(imageApi.includes("outputSize,") && imageApi.includes("sourceSize: resolveSize"), "Vote image generation must separate source composition size from exact output size");
-assert(!imageApi.includes("sourceSize === outputSize ? undefined : outputSize"), "1K Vote output must still be normalized to exact pixels");
-assert(imageTask.includes('"X-Sub2api-Image-Output-Size"') && imageTask.includes('"X-Sub2api-Image-Resize-Filter": "lanczos"'), "Vote image tasks must request server-side Lanczos output");
+assert(imageApi.includes("withVoteImageComposition") && imageApi.includes('"16:9": "1248x704"'), "Vote image generation must inject the tested composition ratio and use a matching 1K source size");
+assert(imageApi.includes('aiApiUrl(requestConfig, "/images/generations")'), "new Vote image generation must use the synchronous compatible endpoint");
+assert(!imageApi.includes('requestSub2ApiImageTask('), "new Vote image generation must not depend on async task submission or polling");
+assert(imageApi.includes("return image;") && imageApi.includes("normalizeVoteImages"), "a valid upstream image must survive orientation or resize failures");
+assert(imageApi.includes("isTransientImageError") && imageApi.includes("return request();"), "transient Vote image failures must receive one controlled retry");
 assert(imageTask.includes("enqueueForApiKey") && imageTask.includes("IMAGE_TASK_ALREADY_ACTIVE"), "Vote image tasks must queue instead of failing the next submission");
 assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
 assert(imageTask.includes("sub2api_image_tasks") && imageTask.includes("resumeSub2ApiImageTask"), "accepted Vote tasks must remain recoverable after reload");
