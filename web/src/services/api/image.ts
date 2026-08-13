@@ -8,7 +8,7 @@ import { dataUrlToFile, readImageMeta, resizeImageDataUrl } from "@/lib/image-ut
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import { isVoteImageGateway, listPendingSub2ApiImageTasks, resumeSub2ApiImageTask, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
+import { isVoteImageGateway, listPendingSub2ApiImageTasks, requestSub2ApiImageTask, resumeSub2ApiImageTask, VOTE_IMAGE_MODEL, type StoredSub2ApiImageTask, type Sub2ApiImageTaskContext } from "./sub2api-image-task";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -122,8 +122,6 @@ const IMAGE_MAX_PIXELS = 8294400;
 const IMAGE_MAX_EDGE = 3840;
 const IMAGE_MAX_RATIO = 3;
 const IMAGE_OUTPUT_FORMAT = "png";
-const VOTE_IMAGE_TIMEOUT_MS = 150_000;
-const VOTE_IMAGE_RETRY_DELAY_MS = 600;
 
 const GEMINI_SUPPORTED_RATIOS = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"];
 const GEMINI_IMAGE_SIZE_BY_QUALITY: Record<string, string> = { low: "1K", medium: "2K", high: "4K", standard: "1K", hd: "2K" };
@@ -267,32 +265,6 @@ async function normalizeVoteImages(images: Array<{ id: string; dataUrl: string }
             return image;
         }
     }));
-}
-
-function isTransientImageError(error: unknown) {
-    if (!axios.isAxiosError(error)) return false;
-    if (!error.response) return true;
-    return error.response.status === 408 || error.response.status === 409 || error.response.status === 429 || error.response.status >= 500;
-}
-
-async function requestVoteImage<T>(request: () => Promise<T>, signal?: AbortSignal) {
-    try {
-        return await request();
-    } catch (error) {
-        if (axios.isCancel(error) || signal?.aborted || !isTransientImageError(error)) throw error;
-        const retryAfterSeconds = axios.isAxiosError(error) ? Number(error.response?.headers?.["retry-after"]) : 0;
-        const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-            ? Math.min(3000, retryAfterSeconds * 1000)
-            : VOTE_IMAGE_RETRY_DELAY_MS;
-        await new Promise<void>((resolve, reject) => {
-            const timer = window.setTimeout(resolve, retryDelay);
-            signal?.addEventListener("abort", () => {
-                window.clearTimeout(timer);
-                reject(new DOMException("Aborted", "AbortError"));
-            }, { once: true });
-        });
-        return request();
-    }
 }
 
 function resolveGeminiImageConfig(config: AiConfig) {
@@ -817,21 +789,17 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         const requestPlan = resolveVoteImageRequestPlan(config.size);
         const background = normalizeBackground(config.background);
         try {
-            const response = await requestVoteImage(() => axios.post<ImageApiResponse>(
-                aiApiUrl(requestConfig, "/images/generations"),
-                {
-                    model: VOTE_IMAGE_MODEL,
-                    prompt: withVoteImageComposition(withSystemPrompt(requestConfig, prompt), requestPlan.aspectRatio),
-                    n: 1,
-                    quality: "low",
-                    ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
-                    ...(background ? { background } : {}),
-                    response_format: "b64_json",
-                    output_format: IMAGE_OUTPUT_FORMAT,
-                },
-                { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal, timeout: VOTE_IMAGE_TIMEOUT_MS },
-            ), options?.signal);
-            const images = parseImagePayload(response.data);
+            const payload = await requestSub2ApiImageTask(requestConfig, "/images/generations/async", {
+                model: VOTE_IMAGE_MODEL,
+                prompt: withVoteImageComposition(withSystemPrompt(requestConfig, prompt), requestPlan.aspectRatio),
+                n: 1,
+                quality: "low",
+                ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
+                ...(background ? { background } : {}),
+                response_format: "b64_json",
+                output_format: IMAGE_OUTPUT_FORMAT,
+            }, { signal: options?.signal, context: options?.taskContext, requestedSize: config.size });
+            const images = parseImagePayload(payload as ImageApiResponse);
             return normalizeVoteImages(images, requestPlan);
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
@@ -913,12 +881,12 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
         files.forEach((file) => formData.append("image", file));
         try {
-            const response = await requestVoteImage(() => axios.post<ImageApiResponse>(
-                aiApiUrl(requestConfig, "/images/edits"),
-                formData,
-                { headers: aiHeaders(requestConfig), signal: options?.signal, timeout: VOTE_IMAGE_TIMEOUT_MS },
-            ), options?.signal);
-            const images = parseImagePayload(response.data);
+            const payload = await requestSub2ApiImageTask(requestConfig, "/images/edits/async", formData, {
+                signal: options?.signal,
+                context: options?.taskContext,
+                requestedSize: config.size,
+            });
+            const images = parseImagePayload(payload as ImageApiResponse);
             return normalizeVoteImages(images, requestPlan);
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
@@ -1026,7 +994,8 @@ export async function resumeImageTask(config: AiConfig, task: StoredSub2ApiImage
     if (!isVoteImageGateway(requestConfig)) throw new Error("当前配置不是 Vote 生图线路");
     try {
         const payload = await resumeSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, task, options?.signal);
-        return parseImagePayload(payload as ImageApiResponse);
+        const images = parseImagePayload(payload as ImageApiResponse);
+        return task.requestedSize ? normalizeVoteImages(images, resolveVoteImageRequestPlan(task.requestedSize)) : images;
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("requestFailed")));
     }

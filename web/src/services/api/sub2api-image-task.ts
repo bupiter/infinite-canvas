@@ -11,7 +11,6 @@ const MAX_POLL_DURATION_MS = 30 * 60 * 1000;
 const taskStore = localforage.createInstance({ name: "infinite-canvas", storeName: "sub2api_image_tasks" });
 const completedTaskSources = new Map<string, Set<string>>();
 const completedSourceTasks = new Map<string, string>();
-const apiKeyQueues = new Map<string, Promise<void>>();
 
 export type Sub2ApiImageTaskContext = {
     surface: "canvas" | "image-workbench";
@@ -28,6 +27,7 @@ export type StoredSub2ApiImageTask = {
     keyFingerprint: string;
     createdAt: number;
     context?: Sub2ApiImageTaskContext;
+    requestedSize?: string;
 };
 
 type AsyncImageTaskPayload = {
@@ -45,6 +45,7 @@ type TaskRequestOptions = {
     signal?: AbortSignal;
     context?: Sub2ApiImageTaskContext;
     outputSize?: string;
+    requestedSize?: string;
 };
 
 export function isVoteImageGateway(config: Pick<AiConfig, "baseUrl" | "model">) {
@@ -57,8 +58,7 @@ export function isVoteImageGateway(config: Pick<AiConfig, "baseUrl" | "model">) 
 }
 
 export async function requestSub2ApiImageTask(config: AiConfig, path: "/images/generations/async" | "/images/edits/async", body: Record<string, unknown> | FormData, options?: TaskRequestOptions) {
-    const queueKey = await fingerprintApiKey(config.apiKey);
-    return enqueueForApiKey(queueKey, () => submitAndWaitForTask(config, path, body, options));
+    return submitAndWaitForTask(config, path, body, options);
 }
 
 export async function resumeSub2ApiImageTask(config: AiConfig, task: StoredSub2ApiImageTask, signal?: AbortSignal) {
@@ -89,25 +89,7 @@ export async function acknowledgeSub2ApiImageSource(source: string) {
     await removeTask(taskId);
 }
 
-async function enqueueForApiKey<T>(queueKey: string, operation: () => Promise<T>) {
-    const previous = apiKeyQueues.get(queueKey) || Promise.resolve();
-    let release!: () => void;
-    const barrier = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    const tail = previous.catch(() => undefined).then(() => barrier);
-    apiKeyQueues.set(queueKey, tail);
-    await previous.catch(() => undefined);
-    try {
-        return await operation();
-    } finally {
-        release();
-        if (apiKeyQueues.get(queueKey) === tail) apiKeyQueues.delete(queueKey);
-    }
-}
-
 async function submitAndWaitForTask(config: AiConfig, path: "/images/generations/async" | "/images/edits/async", body: Record<string, unknown> | FormData, options?: TaskRequestOptions) {
-    const deadline = Date.now() + MAX_POLL_DURATION_MS;
     while (true) {
         try {
             const response = await axios.post<AsyncImageTaskPayload>(buildApiUrl(VOTE_IMAGE_API_ORIGIN, path), body, {
@@ -134,13 +116,12 @@ async function submitAndWaitForTask(config: AiConfig, path: "/images/generations
                 keyFingerprint: await fingerprintApiKey(config.apiKey),
                 createdAt: Date.now(),
                 context: options?.context,
+                requestedSize: options?.requestedSize,
             };
             await saveTask(task);
             return waitForSub2ApiImageTask(config, task, retryAfterMs(response.headers["retry-after"]), options?.signal);
         } catch (error) {
-            if (axios.isCancel(error) || options?.signal?.aborted) throw error;
-            if (!isActiveTaskConflict(error) || Date.now() >= deadline) throw error;
-            await delay(retryAfterMs(axios.isAxiosError(error) ? error.response?.headers["retry-after"] : undefined), options?.signal);
+            throw error;
         }
     }
 }
@@ -190,13 +171,6 @@ async function waitForSub2ApiImageTask(config: AiConfig, task: StoredSub2ApiImag
         }
         throw new Error("生图任务已完成，但没有返回图片");
     }
-}
-
-function isActiveTaskConflict(error: unknown) {
-    if (!axios.isAxiosError<AsyncImageTaskPayload>(error) || error.response?.status !== 429) return false;
-    const payload = error.response.data;
-    const code = typeof payload === "object" && payload ? payload.code || (typeof payload.error === "object" ? payload.error?.code : "") : "";
-    return code === "IMAGE_TASK_ALREADY_ACTIVE";
 }
 
 function rememberCompletedTaskSources(taskId: string, result: Record<string, unknown>) {

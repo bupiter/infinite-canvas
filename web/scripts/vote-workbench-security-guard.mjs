@@ -48,11 +48,13 @@ assert(voteValidation.includes("models.size !== 1 || !models.has(VOTE_IMAGE_MODE
 assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
 assert(imageApi.includes('quality: "low"'), "Vote image generation must use the economical 1K upstream quality");
 assert(imageApi.includes("withVoteImageComposition") && imageApi.includes('"16:9": "1248x704"'), "Vote image generation must inject the tested composition ratio and use a matching 1K source size");
-assert(imageApi.includes('aiApiUrl(requestConfig, "/images/generations")'), "new Vote image generation must use the synchronous compatible endpoint");
-assert(!imageApi.includes('requestSub2ApiImageTask('), "new Vote image generation must not depend on async task submission or polling");
+assert(imageApi.includes('requestSub2ApiImageTask(requestConfig, "/images/generations/async"'), "Vote image generation must use async task submission");
+assert(imageApi.includes('requestSub2ApiImageTask(requestConfig, "/images/edits/async"'), "Vote image editing must use async task submission");
+assert(!imageApi.includes("requestVoteImage("), "Vote image requests must not blindly retry a complete generation request");
 assert(imageApi.includes("return image;") && imageApi.includes("normalizeVoteImages"), "a valid upstream image must survive orientation or resize failures");
-assert(imageApi.includes("isTransientImageError") && imageApi.includes("return request();"), "transient Vote image failures must receive one controlled retry");
-assert(imageTask.includes("enqueueForApiKey") && imageTask.includes("IMAGE_TASK_ALREADY_ACTIVE"), "Vote image tasks must queue instead of failing the next submission");
+assert(!imageApi.includes("isTransientImageError") && !imageApi.includes("return request();"), "Vote image failures must not resubmit the complete generation request");
+assert(!imageTask.includes("enqueueForApiKey"), "Vote image task submission must not wait for an earlier task to finish");
+assert(!imageTask.includes("IMAGE_TASK_ALREADY_ACTIVE"), "Vote image task submission must never retry the complete request after a conflict");
 assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
 assert(imageTask.includes("sub2api_image_tasks") && imageTask.includes("resumeSub2ApiImageTask"), "accepted Vote tasks must remain recoverable after reload");
 assert(imagePage.includes("setResults((current) => [...current, ...slots])"), "new image batches must append visible pending slots without replacing active work");
