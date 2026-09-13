@@ -80,7 +80,7 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
 
     return (
         <Modal title={null} open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} width={820} centered destroyOnHidden>
-            <div className="space-y-5">
+            <div className="space-y-5" onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
                 <div>
                     <h2 className="text-xl font-semibold">放大导出</h2>
                     <p className="mt-2 text-xs opacity-70">等比放大并保留原图。插值放大不保证增加真实细节。</p>
