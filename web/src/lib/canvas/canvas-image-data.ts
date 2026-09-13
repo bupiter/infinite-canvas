@@ -1,4 +1,5 @@
 import { resizeImageBlob } from "@/lib/image-resize";
+import type { ImageResizeFit } from "@/lib/image-resize-geometry";
 export type ImageCropRect = {
     x: number;
     y: number;
@@ -20,6 +21,9 @@ export const MAX_UPSCALE_LONG_EDGE = 4096;
 export type ImageUpscaleParams = {
     targetLongEdge: number;
     algorithm: ImageUpscaleAlgorithm;
+    targetWidth?: number;
+    targetHeight?: number;
+    fit?: ImageResizeFit;
 };
 
 export type ImageSplitParams = {
@@ -115,9 +119,9 @@ export async function upscaleImageBlob(dataUrl: string, params: ImageUpscalePara
     if (!response.ok) throw new Error("无法读取原图");
     const blob = await response.blob();
     const image = await createImageBitmap(blob);
-    const { width, height } = resolveUpscaleSize(image.width, image.height, params.targetLongEdge);
+    const { width, height } = params.targetWidth && params.targetHeight ? { width: params.targetWidth, height: params.targetHeight } : resolveUpscaleSize(image.width, image.height, params.targetLongEdge);
     image.close();
-    return resizeImageBlob(blob, width, height, params.algorithm);
+    return resizeImageBlob(blob, width, height, params.algorithm, "image/png", params.fit);
 }
 
 // Keep the existing data-URL contract for small Agent message previews.
