@@ -1,3 +1,5 @@
+import { findPendingImageTask } from "@/services/api/sub2api-image-task";
+import { useImageTaskProgress } from "@/stores/use-image-task-progress";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -6,7 +8,6 @@ import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
 import { isVoteImageRequest, listPendingImageTasks, requestEdit, requestGeneration, requestImageQuestion, resumeImageTask } from "@/services/api/image";
-import { acknowledgeSub2ApiImageSource } from "@/services/api/sub2api-image-task";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -17,7 +18,7 @@ import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
+import { cropDataUrl, splitDataUrl, upscaleImageBlob } from "@/lib/canvas/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
@@ -188,6 +189,8 @@ function InfiniteCanvasPage() {
     const addAsset = useAssetStore((state) => state.addAsset);
     const cleanupAssetImages = useAssetStore((state) => state.cleanupImages);
     const hydrated = useCanvasStore((state) => state.hydrated);
+    const canvasSaveError = useCanvasStore((state) => state.saveError);
+    useEffect(() => { if (canvasSaveError) message.error(canvasSaveError); }, [canvasSaveError, message]);
     const createProject = useCanvasStore((state) => state.createProject);
     const openProject = useCanvasStore((state) => state.openProject);
     const updateProject = useCanvasStore((state) => state.updateProject);
@@ -415,23 +418,29 @@ function InfiniteCanvasPage() {
                         recoveringImageTasksRef.current.set(task.id, recoveryToken);
                         const targetNodeId = task.context!.targetNodeId!;
                         const imageId = task.context!.imageId!;
+                        setNodes((prev) => {
+                            if (prev.some((node) => node.id === targetNodeId)) return prev;
+                            const size = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+                            return [...prev, { id: targetNodeId, type: CanvasNodeType.Image, title: "恢复中的生成任务", position: { x: 0, y: 0 }, width: size.width, height: size.height, metadata: { status: NODE_STATUS_LOADING } }];
+                        });
                         try {
                             const image = (await resumeImageTask(recoveryConfig, task))[0];
                             if (!image || disposed) return;
                             // Keep the task recoverable until its image is attached to the project.
-                            const uploaded = await uploadImage(image.dataUrl, { acknowledgeSource: false });
+                            const uploaded = await uploadImage(image.dataUrl, { taskId: image.taskId });
                             if (disposed) return;
                             const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                             const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                             const recovered: CanvasNodeImage = { id: imageId, status: NODE_STATUS_SUCCESS, content: uploaded.url, storageKey: uploaded.storageKey, naturalWidth: uploaded.width, naturalHeight: uploaded.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType };
-                            setNodes((prev) =>
-                                prev.map((node) => {
+                            setNodes((prev) => {
+                                if (!prev.some((node) => node.id === targetNodeId)) return [...prev, { id: targetNodeId, title: "恢复的生成图片", type: CanvasNodeType.Image, position: { x: 0, y: 0 }, ...imageSize, metadata: { ...imageMetadata(uploaded), images: [recovered], primaryImageId: imageId, status: NODE_STATUS_SUCCESS } }];
+                                return prev.map((node) => {
                                     if (node.id !== targetNodeId) return node;
-                                    const images = node.metadata?.images?.map((item) => item.id === imageId ? recovered : item) || [recovered];
+                                    const previous = node.metadata?.images || [];
+                                    const images = previous.some((item) => item.id === imageId) ? previous.map((item) => item.id === imageId ? recovered : item) : [...previous, recovered];
                                     return { ...node, ...imageSize, metadata: { ...node.metadata, ...imageMetadata(uploaded), images, primaryImageId: imageId, status: NODE_STATUS_SUCCESS, errorDetails: undefined } };
-                                }),
-                            );
-                            await acknowledgeSub2ApiImageSource(image.dataUrl);
+                                });
+                            });
                         } catch (error) {
                             if (disposed) return;
                             const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
@@ -445,7 +454,7 @@ function InfiniteCanvasPage() {
                         }
                     }),
             ),
-        );
+        ).catch(() => message.error("无法读取本机任务记录，请检查浏览器存储空间"));
         return () => {
             disposed = true;
             recoveringImageTasksRef.current.forEach((token, taskId) => {
@@ -1783,7 +1792,7 @@ function InfiniteCanvasPage() {
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
                 const image = await requestEdit(generationConfig, prompt, [source], { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl }, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: childId, imageId: childId } }).then((items) => items[0]);
-                const uploaded = await uploadImage(image.dataUrl);
+                const uploaded = await uploadImage(image.dataUrl, { taskId: image.taskId });
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
             } catch (error) {
@@ -1802,27 +1811,23 @@ function InfiniteCanvasPage() {
     const upscaleImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageUpscaleParams) => {
         if (!node.metadata?.content) return;
         setUpscaleNodeId(null);
-        const upscaled = await upscaleDataUrl(node.metadata.content, params);
-        const image = await uploadImage(upscaled);
-        const size = fitNodeSize(image.width, image.height);
         const childId = nanoid();
-        const child: CanvasNodeData = {
-            id: childId,
-            type: CanvasNodeType.Image,
-            title: "Upscaled Image",
-            position: { x: node.position.x + node.width + 96, y: node.position.y },
-            width: size.width,
-            height: size.height,
-            metadata: {
-                ...imageMetadata(image),
-                prompt: node.metadata?.prompt,
-            },
-        };
+        const startedAt = Date.now();
+        const child: CanvasNodeData = { id: childId, type: CanvasNodeType.Image, title: "放大版本", position: { x: node.position.x + node.width + 96, y: node.position.y }, width: node.width, height: node.height, metadata: { status: NODE_STATUS_LOADING } };
         setNodes((prev) => [...prev, child]);
-        setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
-        setSelectedNodeIds(new Set([childId]));
-        setDialogNodeId(childId);
-    }, []);
+        useImageTaskProgress.getState().update(childId, { taskId: childId, phase: "upscaling", startedAt });
+        try {
+            const image = await uploadImage(await upscaleImageBlob(node.metadata.content, params));
+            const size = fitNodeSize(image.width, image.height);
+            setNodes((prev) => prev.map((item) => item.id === childId ? { ...item, ...size, metadata: { ...imageMetadata(image), prompt: node.metadata?.prompt } } : item));
+            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
+            setSelectedNodeIds(new Set([childId]));
+            useImageTaskProgress.getState().update(childId, { taskId: childId, phase: "saved", startedAt });
+        } catch {
+            setNodes((prev) => prev.filter((item) => item.id !== childId));
+            message.error("图片放大或保存失败，原图仍可使用");
+        }
+    }, [message]);
 
     const generateAngleNode = useCallback(
         async (node: CanvasNodeData, params: CanvasImageAngleParams) => {
@@ -1865,7 +1870,7 @@ function InfiniteCanvasPage() {
                     undefined,
                     { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: childId, imageId: childId } },
                 ).then((items) => items[0]);
-                const uploaded = await uploadImage(image.dataUrl);
+                const uploaded = await uploadImage(image.dataUrl, { taskId: image.taskId });
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
             } catch (error) {
@@ -2096,7 +2101,7 @@ function InfiniteCanvasPage() {
                     const image = refs.length
                         ? await requestEdit({ ...generationConfig, count: "1" }, fullPrompt, refs, undefined, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: nodeId, imageId: nodeId } }).then((items) => items[0])
                         : await requestGeneration({ ...generationConfig, count: "1" }, fullPrompt, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: nodeId, imageId: nodeId } }).then((items) => items[0]);
-                    const uploaded = await uploadImage(image.dataUrl);
+                    const uploaded = await uploadImage(image.dataUrl, { taskId: image.taskId });
                     setNodes((prev) =>
                         prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), prompt: scene, model: generationConfig.model, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)),
                     );
@@ -2221,7 +2226,7 @@ function InfiniteCanvasPage() {
                                 const image = referenceImages.length
                                     ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: rootId, imageId } }).then((items) => items[0])
                                     : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: rootId, imageId } }).then((items) => items[0]);
-                                const uploaded = await uploadImage(image.dataUrl);
+                                const uploaded = await uploadImage(image.dataUrl, { taskId: image.taskId });
                                 const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                                 const item: CanvasNodeImage = { id: imageId, status: NODE_STATUS_SUCCESS, content: uploaded.url, storageKey: uploaded.storageKey, naturalWidth: uploaded.width, naturalHeight: uploaded.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType };
                                 setNodes((prev) =>
@@ -2553,11 +2558,12 @@ function InfiniteCanvasPage() {
                     return;
                 }
 
-                const retryImageId = imageId || node.metadata?.primaryImageId || nanoid();
-                const image = useReferenceImages
+                const retryImageId = imageId || node.metadata?.primaryImageId || node.id;
+                const pending = await findPendingImageTask({ surface: "canvas", projectId, imageId: retryImageId });
+                const image = pending ? (await resumeImageTask(generationConfig, pending))[0] : useReferenceImages
                     ? await requestEdit(generationConfig, prompt, retryImages, undefined, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: node.id, imageId: retryImageId } }).then((items) => items[0])
                     : await requestGeneration(generationConfig, prompt, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: node.id, imageId: retryImageId } }).then((items) => items[0]);
-                const uploadedImage = await uploadImage(image.dataUrl);
+                const uploadedImage = await uploadImage(image.dataUrl, { taskId: image.taskId });
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const retryImage: CanvasNodeImage = {
                     id: retryImageId,

@@ -610,7 +610,7 @@ export default {
         dataNotice: "API Key 和渠道配置仅保存在当前浏览器。保存 image.vote520.com 渠道前会验证 Key，并确认该 Key 只开放 gpt-image-2。",
         connectionVerified: "Vote 生图渠道验证通过并已保存",
         authenticationFailed: "Key 无效或已失效，请重新创建生图专用 Key",
-        groupNotImageOnly: "该 Key 对应的模型集合并非仅有 gpt-image-2，无法保存此渠道",
+        groupNotImageOnly: "该 Key 需要属于生图分组，并提供已接通的 gpt-image-2 模型",
         serviceUnavailable: "暂时无法连接 Vote 生图服务，请稍后重试",
         firstUseTitle: "确认 Vote 生图的数据处理与计费说明",
         firstUseData: "API Key、渠道配置、画布和生成记录主要保存在当前浏览器；请勿在公共设备上保存 Key。",

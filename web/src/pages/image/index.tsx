@@ -6,6 +6,12 @@ import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
+import { ImageTaskStatus } from "@/components/image-task-status";
+import { useImageThumbnail } from "@/hooks/use-image-thumbnail";
+import { CanvasNodeUpscaleDialog, type CanvasImageUpscaleParams } from "@/components/canvas/canvas-node-upscale-dialog";
+import { upscaleImageBlob } from "@/lib/canvas/canvas-image-data";
+import { useImageTaskProgress } from "@/stores/use-image-task-progress";
+import { acknowledgeSavedImageTasks, findPendingImageTask } from "@/services/api/sub2api-image-task";
 import { ModelPicker } from "@/components/model-picker";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
@@ -70,8 +76,29 @@ const logStore = localforage.createInstance({ name: "infinite-canvas", storeName
 
 export default function ImagePage() {
     const { message } = App.useApp();
+    const [upscaleSource, setUpscaleSource] = useState<GeneratedImage | null>(null);
+    const upscaleResult = async (params: CanvasImageUpscaleParams) => {
+        const source = upscaleSource;
+        if (!source) return;
+        setUpscaleSource(null);
+        const id = nanoid();
+        const startedAt = Date.now();
+        useImageTaskProgress.getState().update(id, { taskId: id, phase: "upscaling", startedAt });
+        setResults((current) => [...current, { id, status: "pending" }]);
+        try {
+            const stored = await uploadImage(await upscaleImageBlob(source.dataUrl, params));
+            const image: GeneratedImage = { id, dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType, durationMs: Date.now() - startedAt };
+            await saveLog(buildLog({ prompt: "原图的等比放大版本", model: "本机图片放大", config: { ...effectiveConfig, count: "1" }, references: [], durationMs: image.durationMs, successCount: 1, failCount: 0, status: "success", images: [image] }));
+            setResults((current) => updateResultById(current, id, { status: "success", image }));
+            useImageTaskProgress.getState().update(id, { taskId: id, phase: "saved", startedAt });
+        } catch {
+            setResults((current) => current.filter((item) => item.id !== id));
+            message.error("图片放大或保存失败，原图仍可使用");
+        }
+    };
     const { t } = useTranslation();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const retryingIds = useRef(new Set<string>());
     const dragDepthRef = useRef(0);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -127,23 +154,25 @@ export default function ImagePage() {
                     .filter((task) => task.context?.surface === "image-workbench" && !recoveredTaskIdsRef.current.has(task.id))
                     .map(async (task) => {
                         recoveredTaskIdsRef.current.add(task.id);
-                        setResults((current) => current.some((item) => item.id === task.id) ? current : [...current, { id: task.id, status: "pending" }]);
+                        const resultId = task.context?.imageId || task.id;
+                        setResults((current) => current.some((item) => item.id === resultId) ? current : [...current, { id: resultId, status: "pending" }]);
                         setActiveBatchCount((count) => count + 1);
                         try {
                             const image = (await resumeImageTask(requestConfig, task))[0];
                             if (!image || disposed) return;
-                            const stored = await uploadImage(image.dataUrl);
+                            const stored = await uploadImage(image.dataUrl, { taskId: image.taskId });
                             if (disposed) return;
                             const recovered: GeneratedImage = { id: task.id, dataUrl: stored.url, storageKey: stored.storageKey, durationMs: Math.max(0, Date.now() - task.createdAt), width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
-                            setResults((current) => updateResultById(current, task.id, { status: "success", image: recovered }));
+                            await saveLog(buildLog({ prompt: "恢复的生成任务", model, config: { ...requestConfig, count: "1" }, references: [], durationMs: recovered.durationMs, successCount: 1, failCount: 0, status: "success", images: [recovered] }));
+                            setResults((current) => updateResultById(current, resultId, { status: "success", image: recovered }));
                         } catch (error) {
-                            if (!disposed) setResults((current) => updateResultById(current, task.id, { status: "failed", error: error instanceof Error ? error.message : t("workbench.generationFailed") }));
+                            if (!disposed) setResults((current) => updateResultById(current, resultId, { status: "failed", error: error instanceof Error ? error.message : t("workbench.generationFailed") }));
                         } finally {
                             if (!disposed) setActiveBatchCount((count) => Math.max(0, count - 1));
                         }
                     }),
             ),
-        );
+        ).catch(() => message.error("无法读取本机任务记录，请检查浏览器存储空间"));
         return () => { disposed = true; };
     }, [effectiveConfig.apiKey, effectiveConfig.baseUrl, effectiveConfig.imageModel, effectiveConfig.model, model, t]);
 
@@ -225,7 +254,7 @@ export default function ImagePage() {
         if (agentTaskId) updateAgentTask(agentTaskId, { status: successCount ? "succeeded" : "failed", successCount, failCount, error: successCount ? undefined : error });
 
         try {
-            saveLog(
+            await saveLog(
                 buildLog({
                     prompt: text,
                     model,
@@ -239,6 +268,8 @@ export default function ImagePage() {
                 }),
             );
             successCount ? message.success(t("imageWorkbench.generated")) : message.error(failed?.reason instanceof Error ? failed.reason.message : t("workbench.generationFailed"));
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "记录尚未保存，请检查浏览器存储空间");
         } finally {
             setActiveBatchCount((count) => Math.max(0, count - 1));
         }
@@ -319,8 +350,12 @@ export default function ImagePage() {
         setDeleteConfirmOpen(false);
     };
 
-    const saveLog = (log: GenerationLog) => {
-        void logStore.setItem(log.id, serializeLog(log)).then(refreshLogs);
+    const saveLog = async (log: GenerationLog) => {
+        const stored = await readStoredLogs();
+        const alreadySaved = log.images.length > 0 && log.images.every((image) => stored.some((entry) => entry.images.some((saved) => saved.storageKey === image.storageKey)));
+        if (!alreadySaved) await logStore.setItem(log.id, serializeLog(log));
+        await acknowledgeSavedImageTasks(new Set(log.images.flatMap((image) => image.storageKey ? [image.storageKey] : [])));
+        await refreshLogs();
     };
 
     const refreshLogs = async () => setLogs(await readStoredLogs());
@@ -355,10 +390,11 @@ export default function ImagePage() {
         const itemStartedAt = performance.now();
         try {
             const taskContext = { surface: "image-workbench" as const, imageId: resultId };
-            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, undefined, { taskContext }) : await requestGeneration(snapshot.config, snapshot.text, { taskContext });
+            const pending = await findPendingImageTask(taskContext);
+            const result = pending ? await resumeImageTask(snapshot.config, pending) : snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, undefined, { taskContext }) : await requestGeneration(snapshot.config, snapshot.text, { taskContext });
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
-            const stored = await uploadImage(image.dataUrl);
+            const stored = await uploadImage(image.dataUrl, { taskId: image.taskId });
             const nextImage = { id: image.id, dataUrl: stored.url, storageKey: stored.storageKey, durationMs: performance.now() - itemStartedAt, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
             setResults((value) => updateResultById(value, resultId, { status: "success", image: nextImage }));
             return nextImage;
@@ -369,15 +405,17 @@ export default function ImagePage() {
     };
 
     const retryResult = async (resultId: string) => {
+        if (retryingIds.current.has(resultId)) return;
         const snapshot = buildRequestSnapshot();
         if (!snapshot) return;
+        retryingIds.current.add(resultId);
         setActiveBatchCount((count) => count + 1);
         setPreviewLog(null);
         setResults((value) => updateResultById(value, resultId, { status: "pending", error: undefined, image: undefined }));
         const retryStartedAt = performance.now();
         try {
             const image = await runGenerationSlot(resultId, snapshot);
-            saveLog(
+            await saveLog(
                 buildLog({
                     prompt: snapshot.text,
                     model,
@@ -391,9 +429,10 @@ export default function ImagePage() {
                 }),
             );
             message.success(t("workbench.retrySuccess"));
-        } catch {
-            // runGenerationSlot has already marked the result as failed.
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "结果尚未保存，可继续获取结果");
         } finally {
+            retryingIds.current.delete(resultId);
             setActiveBatchCount((count) => Math.max(0, count - 1));
         }
     };
@@ -508,7 +547,7 @@ export default function ImagePage() {
 
                             <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm dark:border-stone-800 dark:bg-stone-900 sm:hidden">
                                 <span className="truncate text-stone-500 dark:text-stone-400">
-                                    {modelOptionLabel(effectiveConfig, model)} · {effectiveConfig.size} · {effectiveConfig.quality}
+                                    {modelOptionLabel(effectiveConfig, model)} · {isVoteImageRequest({ ...effectiveConfig, model }) ? "原图 · 构图偏好" : `${effectiveConfig.size} · ${effectiveConfig.quality}`}
                                 </span>
                                 <Button size="small" type="text" icon={<SlidersHorizontal className="size-4" />} onClick={() => setSettingsOpen(true)}>
                                     {t("workbench.adjust")}
@@ -538,11 +577,11 @@ export default function ImagePage() {
                             <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                                 {results.map((result, index) =>
                                     result.status === "success" && result.image ? (
-                                        <ResultImageCard key={result.id} image={result.image} index={index} onEdit={addResultToReferences} onDownload={downloadImage} onSaveAsset={saveResultToAssets} />
+                                        <ResultImageCard key={result.id} image={result.image} index={index} onEdit={addResultToReferences} onDownload={downloadImage} onSaveAsset={saveResultToAssets} onUpscale={() => setUpscaleSource(result.image!)} />
                                     ) : result.status === "failed" ? (
-                                        <FailedImageCard key={result.id} error={result.error || t("workbench.generationFailed")} onRetry={() => retryResult(result.id)} />
+                                        <FailedImageCard key={result.id} imageId={result.id} error={result.error || t("workbench.generationFailed")} onRetry={() => retryResult(result.id)} />
                                     ) : (
-                                        <PendingImageCard key={result.id} />
+                                        <PendingImageCard key={result.id} imageId={result.id} />
                                     ),
                                 )}
                             </div>
@@ -582,6 +621,7 @@ export default function ImagePage() {
                     <GenerationSettings config={effectiveConfig} model={model} updateConfig={updateConfig} openConfigDialog={openConfigDialog} />
                 </div>
             </Drawer>
+            <CanvasNodeUpscaleDialog dataUrl={upscaleSource?.dataUrl || ""} open={Boolean(upscaleSource)} onClose={() => setUpscaleSource(null)} onConfirm={(params) => void upscaleResult(params)} />
             <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={setPrompt} />
             <AssetPickerModal open={assetPickerOpen} defaultTab="my-assets" onInsert={(payload) => void insertPickedAsset(payload)} onClose={() => setAssetPickerOpen(false)} />
             <Modal title={t("workbench.deleteLogs")} open={deleteConfirmOpen} onCancel={() => setDeleteConfirmOpen(false)} onOk={deleteSelectedLogs} okText={t("common.delete")} okButtonProps={{ danger: true }} cancelText={t("common.cancel")}>
@@ -602,7 +642,7 @@ function GenerationSettings({ config, model, updateConfig, openConfigDialog }: {
                 <ModelPicker config={config} value={model} onChange={(value) => updateConfig("imageModel", value)} capability="image" fullWidth onMissingConfig={() => openConfigDialog(false)} />
             </label>
             <div className="col-span-2">
-                <ImageSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" maxCount={10} />
+                <ImageSettingsPanel config={{ ...config, model }} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" maxCount={10} />
             </div>
         </>
     );
@@ -614,17 +654,20 @@ function ResultImageCard({
     onEdit,
     onDownload,
     onSaveAsset,
+    onUpscale,
 }: {
     image: GeneratedImage;
     index: number;
     onEdit: (image: GeneratedImage, index: number) => void;
     onDownload: (image: GeneratedImage, index: number) => void;
     onSaveAsset: (image: GeneratedImage, index: number) => void;
+    onUpscale: () => void;
 }) {
     const { t } = useTranslation();
+    const thumbnail = useImageThumbnail(image.storageKey, image.dataUrl);
     return (
         <div className="overflow-hidden rounded-lg border border-stone-200 bg-background dark:border-stone-800">
-            <Image src={image.dataUrl} alt={t("imageWorkbench.resultAlt", { count: index + 1 })} className="aspect-square object-cover" />
+            <Image src={thumbnail} preview={{ src: image.dataUrl }} loading="lazy" alt={t("imageWorkbench.resultAlt", { count: index + 1 })} className="aspect-square object-contain" />
             <div className="space-y-2 border-t border-stone-200 px-3 py-2.5 dark:border-stone-800">
                 <div className="flex min-w-0 gap-x-2 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
                     <span>
@@ -632,6 +675,7 @@ function ResultImageCard({
                     </span>
                     <span>{formatBytes(image.bytes)}</span>
                     <span>{formatDuration(image.durationMs)}</span>
+                    <span>已保存到本机</span>
                 </div>
                 <div className="grid min-w-0 grid-cols-3 gap-2">
                     <Tooltip title={t("common.addToAssets")}>
@@ -650,12 +694,13 @@ function ResultImageCard({
                         </Button>
                     </Tooltip>
                 </div>
+                <Button size="small" type="text" onClick={onUpscale}>放大导出 · 保留原图</Button>
             </div>
         </div>
     );
 }
 
-function PendingImageCard() {
+function PendingImageCard({ imageId }: { imageId: string }) {
     const { t } = useTranslation();
     return (
         <div className="relative aspect-square overflow-hidden rounded-lg border border-dashed border-stone-300 bg-stone-50 dark:border-stone-700 dark:bg-stone-900">
@@ -668,14 +713,15 @@ function PendingImageCard() {
             />
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-stone-500 dark:text-stone-400">
                 <LoaderCircle className="size-6 animate-spin" />
-                <span>{t("workbench.generating")}</span>
+                <ImageTaskStatus imageId={imageId} />
             </div>
         </div>
     );
 }
 
-function FailedImageCard({ error, onRetry }: { error: string; onRetry: () => void }) {
+function FailedImageCard({ imageId, error, onRetry }: { imageId: string; error: string; onRetry: () => void }) {
     const { t } = useTranslation();
+    const task = useImageTaskProgress((state) => state.tasks[imageId]);
     return (
         <div className="overflow-hidden rounded-lg border border-red-200 bg-red-50 dark:border-red-950 dark:bg-red-950/20">
             <div className="flex aspect-square flex-col items-center justify-center gap-3 p-5 text-center">
@@ -685,8 +731,8 @@ function FailedImageCard({ error, onRetry }: { error: string; onRetry: () => voi
                 </Typography.Paragraph>
             </div>
             <div className="flex justify-end border-t border-red-200 p-3 dark:border-red-950">
-                <Button size="small" danger onClick={onRetry}>
-                    {t("workbench.retry")}
+                <Button size="small" danger onClick={onRetry} disabled={task?.phase === "unknown"}>
+                    {task && task.phase !== "failed" ? "继续获取结果" : "重新生成"}
                 </Button>
             </div>
         </div>

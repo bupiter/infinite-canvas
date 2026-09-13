@@ -1,16 +1,17 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
 import UserLayout from "@/layouts/user-layout";
-import AssetsPage from "@/pages/assets";
-import CanvasPage from "@/pages/canvas";
-import CanvasProjectPage from "@/pages/canvas/project";
-import ConfigPage from "@/pages/config";
+const AssetsPage = lazy(() => import("@/pages/assets"));
+const CanvasPage = lazy(() => import("@/pages/canvas"));
+const CanvasProjectPage = lazy(() => import("@/pages/canvas/project"));
+const ConfigPage = lazy(() => import("@/pages/config"));
 import HomePage from "@/pages/home";
-import ImagePage from "@/pages/image";
+const ImagePage = lazy(() => import("@/pages/image"));
 import NotFound from "@/pages/not-found";
-import PromptsPage from "@/pages/prompts";
-import VideoPage from "@/pages/video";
+const PromptsPage = lazy(() => import("@/pages/prompts"));
+const VideoPage = lazy(() => import("@/pages/video"));
 import { isEmbeddedWorkbench } from "@/lib/vote-workbench";
 
 function WorkbenchHome() {
@@ -22,7 +23,7 @@ export const router = createBrowserRouter([
         element: (
             <UserLayout>
                 <AnalyticsTracker />
-                <Outlet />
+                <Suspense fallback={<div className="p-6 text-sm opacity-60" role="status">正在打开工作台…</div>}><Outlet /></Suspense>
             </UserLayout>
         ),
         children: [

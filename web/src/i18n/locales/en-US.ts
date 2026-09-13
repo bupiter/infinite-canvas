@@ -610,7 +610,7 @@ export default {
         dataNotice: "The API key and provider settings are stored only in this browser. Before an image.vote520.com provider is saved, its key is verified and must expose only gpt-image-2.",
         connectionVerified: "The Vote image provider was verified and saved",
         authenticationFailed: "This key is invalid or expired. Create a new image-only key.",
-        groupNotImageOnly: "This key exposes models other than gpt-image-2, so this provider cannot be saved.",
+        groupNotImageOnly: "This key must belong to an image-only group that provides the supported gpt-image-2 model.",
         serviceUnavailable: "The Vote image service is temporarily unavailable. Try again later.",
         firstUseTitle: "Confirm Vote image data processing and billing",
         firstUseData: "API keys, provider settings, canvases, and generation history are mainly stored in this browser. Do not save a key on a shared device.",

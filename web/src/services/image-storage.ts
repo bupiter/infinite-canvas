@@ -3,7 +3,7 @@ import localforage from "localforage";
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { readImageMeta } from "@/lib/image-utils";
-import { acknowledgeSub2ApiImageSource } from "@/services/api/sub2api-image-task";
+import { rememberSavedTaskImage } from "@/services/api/sub2api-image-task";
 
 export type UploadedImage = {
     url: string;
@@ -19,22 +19,26 @@ const imageLogStore = localforage.createInstance({ name: "infinite-canvas", stor
 const videoLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
 const objectUrls = new Map<string, string>();
 
-export async function uploadImage(input: string | Blob, options?: { acknowledgeSource?: boolean }): Promise<UploadedImage> {
+export async function uploadImage(input: string | Blob, options?: { taskId?: string }): Promise<UploadedImage> {
+    const storageKey = options?.taskId ? `image:task:${options.taskId}` : `image:${nanoid()}`;
+    const existing = options?.taskId ? await store.getItem<Blob>(storageKey) : null;
     let blob: Blob;
-    if (typeof input === "string") {
-        const response = await fetch(input);
+    if (existing) {
+        blob = existing;
+    } else if (typeof input === "string") {
+        const response = await fetch(input, { signal: AbortSignal.timeout(60000) });
         if (!response.ok) throw new Error(i18n.t("common.imageReadFailed"));
         blob = await response.blob();
     } else {
         blob = input;
     }
-    const storageKey = `image:${nanoid()}`;
-    await store.setItem(storageKey, blob);
-    const url = URL.createObjectURL(blob);
+    if (!existing) await store.setItem(storageKey, blob);
+    const url = objectUrls.get(storageKey) || URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
-    const meta = await readImageMeta(url);
-    if (typeof input === "string" && options?.acknowledgeSource !== false) await acknowledgeSub2ApiImageSource(input);
-    return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
+    const meta = await readImageMeta(url, { strict: true });
+    const uploaded = { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
+    if (options?.taskId) await rememberSavedTaskImage(options.taskId, { storageKey, width: uploaded.width, height: uploaded.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType });
+    return uploaded;
 }
 
 export async function resolveImageUrl(storageKey?: string, fallback = "") {
@@ -67,7 +71,7 @@ export async function imageToDataUrl(image: { url?: string; dataUrl?: string; st
 
 export async function deleteStoredImages(keys: Iterable<string>) {
     await Promise.all(
-        Array.from(new Set(keys)).map(async (key) => {
+        Array.from(new Set(Array.from(keys).flatMap((key) => [key, `${key}:preview`]))).map(async (key) => {
             const url = objectUrls.get(key);
             if (url) URL.revokeObjectURL(url);
             objectUrls.delete(key);
@@ -95,7 +99,7 @@ export async function cleanupUnusedImages(usedData: unknown) {
 
 export function collectImageStorageKeys(value: unknown, keys = new Set<string>()) {
     if (!value || typeof value !== "object") return keys;
-    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) keys.add(value.storageKey);
+    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) { keys.add(value.storageKey); keys.add(`${value.storageKey}:preview`); }
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectImageStorageKeys(child, keys)) : collectImageStorageKeys(item, keys)));
     return keys;
 }

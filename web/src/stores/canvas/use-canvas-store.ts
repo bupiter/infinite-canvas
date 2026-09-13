@@ -4,6 +4,8 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { localForageStorage } from "@/lib/localforage-storage";
+import { collectImageStorageKeys } from "@/services/image-storage";
+import { acknowledgeSavedImageTasks } from "@/services/api/sub2api-image-task";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
@@ -23,6 +25,7 @@ export type CanvasProject = {
 
 type CanvasStore = {
     hydrated: boolean;
+    saveError: string | null;
     projects: CanvasProject[];
     createProject: (title?: string) => string;
     importProject: (project: Partial<CanvasProject>) => string;
@@ -38,6 +41,7 @@ const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
 type PersistedCanvasState = Pick<CanvasStore, "projects">;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
+let pendingWrite = Promise.resolve();
 
 const canvasStorage: PersistStorage<CanvasStore> = {
     getItem: async (name) => {
@@ -54,7 +58,14 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             saveTimer = null;
-            void localForageStorage.setItem(name, JSON.stringify(value));
+            // Serialize writes so a slow old snapshot cannot overwrite a newer one.
+            pendingWrite = pendingWrite.catch(() => {}).then(async () => {
+                await localForageStorage.setItem(name, JSON.stringify(value));
+                await acknowledgeSavedImageTasks(collectImageStorageKeys(value.state));
+                useCanvasStore.setState({ saveError: null });
+            }).catch(() => {
+                useCanvasStore.setState({ saveError: "画布尚未保存，请释放浏览器存储空间后重试。生图任务仍保留恢复记录。" });
+            });
         }, 400);
     },
     removeItem: (name) => localForageStorage.removeItem(name),
@@ -64,6 +75,7 @@ export const useCanvasStore = create<CanvasStore>()(
     persist(
         (set, get) => ({
             hydrated: false,
+            saveError: null,
             projects: [],
             createProject: (title = i18n.t("canvas.project.untitled")) => {
                 const now = new Date().toISOString();

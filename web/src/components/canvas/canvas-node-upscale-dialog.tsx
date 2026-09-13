@@ -24,6 +24,7 @@ const defaultParams: CanvasImageUpscaleParams = {
 export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (params: CanvasImageUpscaleParams) => void }) {
     const { t } = useTranslation();
     const [params, setParams] = useState<CanvasImageUpscaleParams>(defaultParams);
+    const [readError, setReadError] = useState("");
     const [image, setImage] = useState<{ width: number; height: number } | null>(null);
     const sourceLongEdge = image ? Math.max(image.width, image.height) : 0;
     const outputSize = useMemo(() => (image ? resolveUpscaleSize(image.width, image.height, params.targetLongEdge) : null), [image, params.targetLongEdge]);
@@ -34,11 +35,14 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
         if (!open) return;
         setParams(defaultParams);
         setImage(null);
+        setReadError("");
     }, [dataUrl, open]);
 
     useEffect(() => {
         if (!open) return;
-        void readImageMeta(dataUrl).then(setImage);
+        let disposed = false;
+        void readImageMeta(dataUrl, { strict: true }).then((meta) => { if (!disposed) setImage(meta); }).catch(() => { if (!disposed) setReadError("原图暂时不可读，请关闭后重试"); });
+        return () => { disposed = true; };
     }, [dataUrl, open]);
 
     useEffect(() => {
@@ -51,7 +55,9 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
         <Modal title={null} open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} width={820} centered destroyOnHidden>
             <div className="space-y-5">
                 <div>
-                    <h2 className="text-xl font-semibold">{t("canvas.editors.upscaleTitle")}</h2>
+                    <h2 className="text-xl font-semibold">放大导出</h2>
+                    <p className="mt-2 text-xs opacity-70">等比放大并保留原图。插值放大不保证增加真实细节。</p>
+                    {readError && <p role="alert" className="mt-2 text-sm">{readError}</p>}
                 </div>
                 <div className="grid gap-6 md:grid-cols-[minmax(260px,1fr)_360px]">
                     <div className="rounded-xl border p-4">

@@ -11,7 +11,7 @@ export async function validateVoteImageChannel(channel: ModelChannel, signal?: A
             signal,
         });
         const models = new Set((response.data.data || []).map((model) => model.id?.trim()).filter((model): model is string => Boolean(model)));
-        if (models.size !== 1 || !models.has(VOTE_IMAGE_MODEL)) throw new VoteImageGroupError();
+        if (!models.has(VOTE_IMAGE_MODEL) || [...models].some((model) => !model.startsWith("gpt-image-"))) throw new VoteImageGroupError();
     } catch (error) {
         if (error instanceof VoteImageGroupError) throw new Error(i18n.t("voteWorkbench.groupNotImageOnly"));
         if (axios.isCancel(error) || (error instanceof DOMException && error.name === "AbortError")) throw error;

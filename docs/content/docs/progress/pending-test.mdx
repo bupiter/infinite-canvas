@@ -5,6 +5,16 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+## Vote 生图体验验收
+
+- 已增加同一 Key 四个活动任务的浏览器队列（跨标签页使用 Web Locks），未提交任务保存在 IndexedDB，重新打开原页面可继续。只对明确的任务名额拒绝重新排队；提交结果不确定时不自动重发。
+- 已改为 task_id 贯穿结果保存；生成记录或画布引用写入成功后才清理恢复记录。切换 Key 后继续获取结果必须使用原凭据，避免误触发新生成。
+- Vote 渠道仅显示已接通的 gpt-image-2，允许模型目录中存在其他图像模型；隐藏无效质量、透明背景和原生 2K/4K 选项，保留构图偏好。第三方渠道参数保持原有行为。
+- 生成先保留原图。画布和生图工作台提供独立等比放大导出，保留原图；支持后台图片处理和结果缩略图，查看大图时使用原始图片。
+- 待使用者确认：十张排队、断网后继续取图、刷新恢复、多标签页同 Key、浏览器存储不足、放大后重开，以及真实上游生图效果与耗时。自动化测试使用模拟接口，不产生付费模型请求。
+- R2 桶级 CORS 和生命周期读取被现有凭据拒绝，等待具有对应只读权限的管理访问；未调整桶权限或缓存策略。
+
+
 The current release needs manual verification in these areas:
 
 - Vote async task recovery: refreshing the Canvas or changing loaded configuration while a task is queued, processing, or completing must not strand the node in a loading state. A completed R2 result must remain recoverable until it is attached to the project, then its local task record must be removed. R2 results selected for 2K/4K output must be readable by browser canvas under CORS, and any genuine terminal error must remain visible instead of being replaced by a generic all-images-failed message.

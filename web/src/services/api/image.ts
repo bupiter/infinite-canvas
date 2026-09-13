@@ -4,7 +4,7 @@ import i18n from "@/i18n";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { nanoid } from "nanoid";
-import { dataUrlToFile, readImageMeta, resizeImageDataUrl } from "@/lib/image-utils";
+import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
@@ -72,6 +72,7 @@ type ResponseApiPayload = {
 type ResponseStreamState = { buffer: string; text: string; payload?: ResponseApiPayload; error?: string };
 
 type ImageApiResponse = {
+    task_id?: string;
     data?: Array<Record<string, unknown>>;
     error?: { message?: string };
     code?: number;
@@ -248,25 +249,6 @@ export function withVoteImageComposition(prompt: string, aspectRatio: string | u
     return `Create a strictly ${orientation} image with a ${aspectRatio} composition. The canvas must follow ${aspectRatio}. Do not create a ${forbidden} image. ${extension}\n\n${prompt}`;
 }
 
-async function normalizeVoteImages(images: Array<{ id: string; dataUrl: string }>, plan: ReturnType<typeof resolveVoteImageRequestPlan>) {
-    if (!plan.shouldResize || !plan.outputSize) return images;
-    const target = parseImageDimensions(plan.outputSize);
-    if (!target) return images;
-    return Promise.all(images.map(async (image) => {
-        try {
-            const actual = await readImageMeta(image.dataUrl);
-            const targetOrientation = Math.sign(target.width - target.height);
-            const actualOrientation = Math.sign(actual.width - actual.height);
-            // A square source can be normalized to either direction. Never turn a returned
-            // portrait into landscape (or vice versa); preserving a valid image is the fallback.
-            if (actualOrientation !== 0 && targetOrientation !== 0 && actualOrientation !== targetOrientation) return image;
-            return { ...image, dataUrl: await resizeImageDataUrl(image.dataUrl, target.width, target.height) };
-        } catch {
-            return image;
-        }
-    }));
-}
-
 function resolveGeminiImageConfig(config: AiConfig) {
     const value = config.size.trim();
     const dimensions = parseImageDimensions(value);
@@ -326,7 +308,7 @@ function parseImagePayload(payload: ImageApiResponse) {
         imageList
             .map(resolveImageDataUrl)
             .filter((value): value is string => Boolean(value))
-            .map((dataUrl) => ({ id: nanoid(), dataUrl }));
+            .map((dataUrl) => ({ id: payload.task_id || nanoid(), dataUrl, taskId: payload.task_id }));
 
     if (images.length === 0) {
         // Check whether the response contains data in an unrecognized format.
@@ -783,11 +765,12 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
     return images;
 }
 
-export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
+export type GeneratedImageResult = { id: string; dataUrl: string; taskId?: string };
+
+export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions): Promise<GeneratedImageResult[]> {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     if (isVoteImageGateway(requestConfig)) {
         const requestPlan = resolveVoteImageRequestPlan(config.size);
-        const background = normalizeBackground(config.background);
         try {
             const payload = await requestSub2ApiImageTask(requestConfig, "/images/generations/async", {
                 model: VOTE_IMAGE_MODEL,
@@ -795,12 +778,11 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 n: 1,
                 quality: "low",
                 ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
-                ...(background ? { background } : {}),
                 response_format: "b64_json",
                 output_format: IMAGE_OUTPUT_FORMAT,
             }, { signal: options?.signal, context: options?.taskContext, requestedSize: config.size });
             const images = parseImagePayload(payload as ImageApiResponse);
-            return normalizeVoteImages(images, requestPlan);
+            return images;
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -861,14 +843,13 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     }
 }
 
-export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
+export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions): Promise<GeneratedImageResult[]> {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     if (isVoteImageGateway(requestConfig)) {
         if (mask) throw new Error(apiText("maskModelUnsupported"));
         const requestPlan = resolveVoteImageRequestPlan(config.size);
-        const background = normalizeBackground(config.background);
         const formData = new FormData();
         formData.set("model", VOTE_IMAGE_MODEL);
         formData.set("prompt", withVoteImageComposition(withSystemPrompt(requestConfig, requestPrompt), requestPlan.aspectRatio));
@@ -877,7 +858,6 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         formData.set("response_format", "b64_json");
         formData.set("output_format", IMAGE_OUTPUT_FORMAT);
         if (requestPlan.sourceSize) formData.set("size", requestPlan.sourceSize);
-        if (background) formData.set("background", background);
         const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
         files.forEach((file) => formData.append("image", file));
         try {
@@ -887,7 +867,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
                 requestedSize: config.size,
             });
             const images = parseImagePayload(payload as ImageApiResponse);
-            return normalizeVoteImages(images, requestPlan);
+            return images;
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -995,7 +975,7 @@ export async function resumeImageTask(config: AiConfig, task: StoredSub2ApiImage
     try {
         const payload = await resumeSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, task, options?.signal);
         const images = parseImagePayload(payload as ImageApiResponse);
-        return task.requestedSize ? normalizeVoteImages(images, resolveVoteImageRequestPlan(task.requestedSize)) : images;
+        return images;
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("requestFailed")));
     }

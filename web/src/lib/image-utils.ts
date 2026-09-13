@@ -40,38 +40,15 @@ export function readFileAsDataUrl(file: File) {
     });
 }
 
-export function readImageMeta(dataUrl: string) {
-    return new Promise<{ width: number; height: number; mimeType: string }>((resolve) => {
+export function readImageMeta(dataUrl: string, options?: { strict?: boolean }) {
+    return new Promise<{ width: number; height: number; mimeType: string }>((resolve, reject) => {
         const image = new Image();
-        const done = () => resolve({ width: image.naturalWidth || 1024, height: image.naturalHeight || 1024, mimeType: dataUrl.match(/^data:([^;]+)/)?.[1] || "image/png" });
-        image.onload = done;
-        image.onerror = done;
-        setTimeout(done, 3000);
+        const fallback = () => resolve({ width: image.naturalWidth || 1024, height: image.naturalHeight || 1024, mimeType: "image/png" });
+        const timer = setTimeout(() => options?.strict ? reject(new Error("图片读取超时，请重试获取结果")) : fallback(), options?.strict ? 20000 : 3000);
+        image.onload = () => { clearTimeout(timer); resolve({ width: image.naturalWidth, height: image.naturalHeight, mimeType: dataUrl.match(/^data:([^;]+)/)?.[1] || "image/png" }); };
+        image.onerror = () => { clearTimeout(timer); options?.strict ? reject(new Error("无法读取图片尺寸，请重试获取结果")) : fallback(); };
         if (/^https?:\/\//i.test(dataUrl)) image.crossOrigin = "anonymous";
         image.src = dataUrl;
-    });
-}
-
-export async function resizeImageDataUrl(dataUrl: string, width: number, height: number) {
-    const image = await loadImage(dataUrl);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(width));
-    canvas.height = Math.max(1, Math.round(height));
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error(i18n.t("common.imageReadFailed"));
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/png");
-}
-
-function loadImage(source: string) {
-    return new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error(i18n.t("common.imageReadFailed")));
-        if (/^https?:\/\//i.test(source)) image.crossOrigin = "anonymous";
-        image.src = source;
     });
 }
 

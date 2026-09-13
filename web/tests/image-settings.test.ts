@@ -1,0 +1,34 @@
+import { afterEach, expect, it, vi } from "vitest";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import type { AiConfig } from "@/stores/use-config-store";
+import { canvasThemes } from "@/lib/canvas-theme";
+vi.mock("@/stores/use-config-store", () => ({ resolveModelRequestConfig: (config: AiConfig) => config }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
+import { ImageSettingsPanel } from "@/components/image-settings-panel";
+const container = document.createElement("div");
+let root: ReturnType<typeof createRoot> | undefined;
+afterEach(async () => { if (root) await act(() => root!.unmount()); root = undefined; });
+it("shows only supported Vote controls and forwards the selected composition", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const update = vi.fn();
+    const config = { model: "gpt-image-2", baseUrl: "https://image.vote520.com", quality: "high", size: "3840x2160", count: "10" } as AiConfig;
+    root = createRoot(container);
+    await act(() => root!.render(React.createElement(ImageSettingsPanel, { config, onConfigChange: update, theme: canvasThemes.light })));
+    expect(container.textContent).toContain("先生成并保存原图");
+    expect(container.textContent).not.toContain("settingsPanels.image.quality");
+    expect(container.textContent).not.toContain("settingsPanels.image.transparent");
+    expect(container.textContent).not.toContain("(4k)");
+    const portrait = [...container.querySelectorAll("button")].find((button) => button.textContent === "9:16")!;
+    await act(() => portrait.click());
+    expect(update).toHaveBeenCalledWith("size", "9:16");
+});
+it("preserves quality and precise dimensions for other providers", async () => {
+    const config = { model: "other-image", baseUrl: "https://fixture.invalid", quality: "high", size: "1024x1024", count: "1" } as AiConfig;
+    root = createRoot(container);
+    await act(() => root!.render(React.createElement(ImageSettingsPanel, { config, onConfigChange: vi.fn(), theme: canvasThemes.light })));
+    expect(container.textContent).toContain("settingsPanels.image.quality");
+    expect(container.textContent).toContain("settingsPanels.image.transparent");
+    expect(container.textContent).toContain("(4k)");
+});
