@@ -1,17 +1,19 @@
 import axios from "axios";
 
 import i18n from "@/i18n";
-import { VOTE_IMAGE_MODEL } from "@/lib/vote-workbench";
+import { VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 import { buildApiUrl, type ModelChannel } from "@/stores/use-config-store";
 
-export async function validateVoteImageChannel(channel: ModelChannel, signal?: AbortSignal) {
+export async function validateVoteImageChannel(channel: ModelChannel, signal?: AbortSignal): Promise<string[]> {
     try {
         const response = await axios.get<{ data?: Array<{ id?: string }> }>(buildApiUrl(channel.baseUrl, "/models"), {
             headers: { Authorization: `Bearer ${channel.apiKey}` },
             signal,
         });
         const models = new Set((response.data.data || []).map((model) => model.id?.trim()).filter((model): model is string => Boolean(model)));
-        if (!models.has(VOTE_IMAGE_MODEL) || [...models].some((model) => !model.startsWith("gpt-image-"))) throw new VoteImageGroupError();
+        const supported = VOTE_IMAGE_MODELS.filter((model) => models.has(model));
+        if (!supported.length || [...models].some((model) => !model.startsWith("gpt-image-"))) throw new VoteImageGroupError();
+        return supported;
     } catch (error) {
         if (error instanceof VoteImageGroupError) throw new Error(i18n.t("voteWorkbench.groupNotImageOnly"));
         if (axios.isCancel(error) || (error instanceof DOMException && error.name === "AbortError")) throw error;

@@ -44,7 +44,7 @@ assert(channelEditor.includes("firstUseData") && channelEditor.includes("firstUs
 assert(channelEditor.includes("await validateVoteImageChannel(normalized, controller.signal)"), "Vote providers must validate their key before saving");
 assert(/await validateVoteImageChannel\(normalized, controller\.signal\);[\s\S]{0,360}onSave\(/.test(channelEditor), "Vote providers must not save before validation succeeds");
 assert(voteValidation.includes('buildApiUrl(channel.baseUrl, "/models")'), "Vote key validation must call the provider models endpoint");
-assert(voteValidation.includes("!models.has(VOTE_IMAGE_MODEL)") && voteValidation.includes('!model.startsWith("gpt-image-")'), "Vote key validation must require a supported image-only catalog");
+assert(voteValidation.includes("VOTE_IMAGE_MODELS.filter((model) => models.has(model))") && voteValidation.includes('!model.startsWith("gpt-image-")'), "Vote key validation must require a supported image-only catalog");
 assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
 assert(imageApi.includes('quality: "low"'), "Vote image generation must use the economical 1K upstream quality");
 assert(imageApi.includes("withVoteImageComposition") && imageApi.includes('"16:9": "1248x704"'), "Vote image generation must inject the tested composition ratio and use a matching 1K source size");

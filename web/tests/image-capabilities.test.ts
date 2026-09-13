@@ -10,9 +10,9 @@ const channel = { baseUrl: "https://image.vote520.com", apiKey: "test-only" } as
 beforeEach(() => vi.restoreAllMocks());
 it("accepts an image-only catalog that adds a second image model", async () => {
     vi.spyOn(axios, "get").mockResolvedValue({ data: { data: [{ id: "gpt-image-2" }, { id: "gpt-image-2.5" }] } });
-    await expect(validateVoteImageChannel(channel)).resolves.toBeUndefined();
+    await expect(validateVoteImageChannel(channel)).resolves.toEqual(["gpt-image-2", "gpt-image-2.5"]);
 });
-it.each([{ ids: ["gpt-6", "gpt-image-2"] }, { ids: ["gpt-image-2.5"] }, { ids: [] }])("does not silently configure unsupported catalog $ids", async ({ ids }) => {
+it.each([{ ids: ["gpt-6", "gpt-image-2"] }, { ids: [] }])("does not silently configure unsupported catalog $ids", async ({ ids }) => {
     vi.spyOn(axios, "get").mockResolvedValue({ data: { data: ids.map((id) => ({ id })) } });
     await expect(validateVoteImageChannel(channel)).rejects.toThrow("groupNotImageOnly");
 });

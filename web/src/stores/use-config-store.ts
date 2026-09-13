@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import { VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 
 export type ApiCallFormat = "openai" | "gemini" | "ark";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -93,7 +94,7 @@ export const defaultConfig: AiConfig = {
     videoWatermark: "false",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: [`${VOTE_IMAGE_CHANNEL_ID}::gpt-image-2`, `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-terra`, `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-sol`],
+        models: [`${VOTE_IMAGE_CHANNEL_ID}::gpt-image-2`, `${VOTE_IMAGE_CHANNEL_ID}::gpt-image-2.5`, `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-terra`, `${VOTE_TEXT_CHANNEL_ID}::gpt-5.6-sol`],
     quality: "auto",
     size: "1:1",
     background: "",
@@ -345,7 +346,7 @@ function normalizeModelForCapability(value: string | undefined, channels: ModelC
 
 function normalizeChannels(config: AiConfig) {
     const persistedChannels = Array.isArray(config.channels) ? config.channels : [];
-    const channels = persistedChannels.map((channel, index) =>
+    let channels = persistedChannels.map((channel, index) =>
         createModelChannel({
             ...channel,
             id: channel.id || (index === 0 ? "default" : `channel-${index + 1}`),
@@ -353,6 +354,7 @@ function normalizeChannels(config: AiConfig) {
             models: normalizeChannelModels(channel.models),
         }),
     );
+    channels = channels.map((channel) => sameOrigin(channel.baseUrl, VOTE_IMAGE_BASE_URL) ? { ...channel, models: normalizeChannelModels([...channel.models, ...VOTE_IMAGE_MODELS]) } : channel);
     if (!channels.length) {
         channels.push(
             createModelChannel({
@@ -377,7 +379,7 @@ function createVoteImageChannel(): ModelChannel {
         baseUrl: VOTE_IMAGE_BASE_URL,
         apiKey: "",
         apiFormat: "openai",
-        models: [{ name: "gpt-image-2", capability: "image" }],
+        models: [{ name: "gpt-image-2", capability: "image" }, { name: "gpt-image-2.5", capability: "image" }],
     };
 }
 

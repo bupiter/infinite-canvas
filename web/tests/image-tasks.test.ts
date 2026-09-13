@@ -32,6 +32,17 @@ beforeEach(() => {
 });
 
 describe("durable asynchronous image flow", () => {
+    it("submits the selected supported image model instead of a fixed model", async () => {
+        const selected = { ...config, model: "gpt-image-2.5" };
+        let requestBody: Record<string, unknown> = {};
+        vi.mocked(axios.post).mockImplementationOnce(async (_url, body) => {
+            requestBody = body as Record<string, unknown>;
+            return { data: { task_id: "server-selected-model" }, headers: {} };
+        });
+        await requestSub2ApiImageTask(selected, "/images/generations/async", { model: "gpt-image-2.5", prompt: "fixture" }, { context: { surface: "image-workbench", imageId: "selected" } });
+        expect(requestBody.model).toBe("gpt-image-2.5");
+    });
+
     it("persists before sending and never persists the credential", async () => {
         vi.mocked(axios.post).mockImplementationOnce(async () => {
             expect(memory.data.size).toBe(1);

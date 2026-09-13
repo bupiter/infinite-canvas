@@ -773,7 +773,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         const requestPlan = resolveVoteImageRequestPlan(config.size);
         try {
             const payload = await requestSub2ApiImageTask(requestConfig, "/images/generations/async", {
-                model: VOTE_IMAGE_MODEL,
+                model: requestConfig.model || VOTE_IMAGE_MODEL,
                 prompt: withVoteImageComposition(withSystemPrompt(requestConfig, prompt), requestPlan.aspectRatio),
                 n: 1,
                 quality: "low",
@@ -851,7 +851,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         if (mask) throw new Error(apiText("maskModelUnsupported"));
         const requestPlan = resolveVoteImageRequestPlan(config.size);
         const formData = new FormData();
-        formData.set("model", VOTE_IMAGE_MODEL);
+        formData.set("model", requestConfig.model || VOTE_IMAGE_MODEL);
         formData.set("prompt", withVoteImageComposition(withSystemPrompt(requestConfig, requestPrompt), requestPlan.aspectRatio));
         formData.set("n", "1");
         formData.set("quality", "low");
@@ -973,7 +973,7 @@ export async function resumeImageTask(config: AiConfig, task: StoredSub2ApiImage
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     if (!isVoteImageGateway(requestConfig)) throw new Error("当前配置不是 Vote 生图线路");
     try {
-        const payload = await resumeSub2ApiImageTask({ ...requestConfig, model: VOTE_IMAGE_MODEL }, task, options?.signal);
+        const payload = await resumeSub2ApiImageTask({ ...requestConfig, model: task.model || VOTE_IMAGE_MODEL }, task, options?.signal);
         const images = parseImagePayload(payload as ImageApiResponse);
         return images;
     } catch (error) {

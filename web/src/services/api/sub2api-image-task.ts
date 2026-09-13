@@ -2,11 +2,12 @@ import axios from "axios";
 import localforage from "localforage";
 
 import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
+import { VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 import { useImageTaskProgress, type ImageTaskPhase } from "@/stores/use-image-task-progress";
 import { taskDelay, withImageTaskSlot } from "./image-task-queue";
 
 export const VOTE_IMAGE_API_ORIGIN = "https://image.vote520.com";
-export const VOTE_IMAGE_MODEL = "gpt-image-2";
+export { VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 const POLL_INTERVAL_MS = 3000;
 const MAX_WAIT_MS = 30 * 60 * 1000;
 const taskStore = localforage.createInstance({ name: "infinite-canvas", storeName: "sub2api_image_tasks" });
@@ -46,7 +47,7 @@ type TaskRequestOptions = { signal?: AbortSignal; context?: Sub2ApiImageTaskCont
 export function isVoteImageGateway(config: Pick<AiConfig, "baseUrl" | "model">) {
     try {
         const model = config.model.trim().toLowerCase();
-        return new URL(config.baseUrl).origin === VOTE_IMAGE_API_ORIGIN && (model === VOTE_IMAGE_MODEL || model.endsWith(`/${VOTE_IMAGE_MODEL}`));
+        return new URL(config.baseUrl).origin === VOTE_IMAGE_API_ORIGIN && VOTE_IMAGE_MODELS.some((item) => model === item || model.endsWith(`/${item}`));
     } catch { return false; }
 }
 
@@ -56,7 +57,7 @@ function progress(task: StoredSub2ApiImageTask, phase: ImageTaskPhase) {
 
 export async function requestSub2ApiImageTask(config: AiConfig, path: TaskPath, body: Record<string, unknown> | FormData, options?: TaskRequestOptions) {
     const task: StoredSub2ApiImageTask = {
-        id: `local_${crypto.randomUUID()}`, baseUrl: VOTE_IMAGE_API_ORIGIN, model: VOTE_IMAGE_MODEL,
+        id: `local_${crypto.randomUUID()}`, baseUrl: VOTE_IMAGE_API_ORIGIN, model: config.model || VOTE_IMAGE_MODEL,
         operation: path === "/images/edits/async" ? "edit" : "generation", keyFingerprint: await fingerprintApiKey(config.apiKey),
         createdAt: Date.now(), context: options?.context, requestedSize: options?.requestedSize, state: "queued",
         request: body instanceof FormData ? { path, form: Array.from(body.entries()) } : { path, json: body },

@@ -2,6 +2,7 @@ import type { AiConfig } from "@/stores/use-config-store";
 
 export const VOTE_API_ORIGIN = "https://image.vote520.com";
 export const VOTE_IMAGE_MODEL = "gpt-image-2";
+export const VOTE_IMAGE_MODELS = ["gpt-image-2", "gpt-image-2.5"] as const;
 export const VOTE_DATA_NOTICE_STORAGE_KEY = "infinite-canvas:vote-data-notice:v1";
 const EMBEDDED_SESSION_KEY = "vote-canvas:embedded";
 

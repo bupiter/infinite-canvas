@@ -3,7 +3,7 @@ import { ListPlus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { isVoteImageBaseUrl, VOTE_DATA_NOTICE_STORAGE_KEY, VOTE_IMAGE_MODEL } from "@/lib/vote-workbench";
+import { isVoteImageBaseUrl, VOTE_DATA_NOTICE_STORAGE_KEY, VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 import { validateVoteImageChannel } from "@/services/api/vote-image-channel";
 import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 import { ModelScriptEditor } from "./model-script-editor";
@@ -122,10 +122,9 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         validationControllerRef.current = controller;
         setSaving(true);
         try {
-            await validateVoteImageChannel(normalized, controller.signal);
+            const supportedModels = await validateVoteImageChannel(normalized, controller.signal);
             if (validationControllerRef.current !== controller) return;
-            const existing = normalized.models.find((model) => model.name === VOTE_IMAGE_MODEL);
-            onSave({ ...normalized, apiFormat: "openai", apiKey: normalized.apiKey.trim(), models: [{ ...existing, name: VOTE_IMAGE_MODEL, capability: "image" }] });
+            onSave({ ...normalized, apiFormat: "openai", apiKey: normalized.apiKey.trim(), models: VOTE_IMAGE_MODELS.filter((model) => supportedModels.includes(model)).map((name) => ({ name, capability: "image" })) });
             message.success(t("voteWorkbench.connectionVerified"));
             close();
         } catch (error) {
