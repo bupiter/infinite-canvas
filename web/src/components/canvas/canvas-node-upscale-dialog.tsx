@@ -67,10 +67,9 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
 
     useEffect(() => {
         if (!image) return;
-        if (!targetOption.startsWith("long-")) return;
         const nextTarget = targetOptions.find((option) => option.targetLongEdge && sourceLongEdge < option.targetLongEdge)?.value || "long-4096";
-        setTargetOption(nextTarget);
-    }, [image, sourceLongEdge, targetOption]);
+        setTargetOption((current) => current.startsWith("long-") ? nextTarget : current);
+    }, [image, sourceLongEdge]);
 
     const confirmParams: CanvasImageUpscaleParams = {
         ...params,
@@ -106,7 +105,7 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
                                 <div className="text-xs font-medium opacity-60">保持原比例</div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {targetOptions.filter((option) => option.targetLongEdge).map((option) => (
-                                        <button key={option.value} type="button" aria-pressed={targetOption === option.value} className={`min-h-10 rounded-lg border px-2 text-xs transition ${targetOption === option.value ? "border-stone-900 bg-stone-900 text-white dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900" : "border-stone-200 hover:border-stone-500 dark:border-stone-700"}`} onClick={() => setTargetOption(option.value)}>
+                                        <button key={option.value} type="button" aria-pressed={targetOption === option.value} className={`min-h-10 rounded-lg border px-2 text-xs transition ${targetOption === option.value ? "border-stone-900 bg-stone-900 !text-white dark:border-stone-100 dark:bg-stone-100 dark:!text-stone-900" : "border-stone-200 hover:border-stone-500 dark:border-stone-700"}`} onClick={() => setTargetOption(option.value)}>
                                             {option.label}
                                         </button>
                                     ))}
@@ -116,17 +115,17 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
                                 <div className="text-xs font-medium opacity-60">指定画布尺寸</div>
                                 <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto pr-1">
                                     {targetOptions.filter((option) => option.width).map((option) => (
-                                        <button key={option.value} type="button" aria-pressed={targetOption === option.value} className={`min-h-10 rounded-lg border px-2 text-xs transition ${targetOption === option.value ? "border-stone-900 bg-stone-900 text-white dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900" : "border-stone-200 hover:border-stone-500 dark:border-stone-700"}`} onClick={() => setTargetOption(option.value)}>
+                                        <button key={option.value} type="button" aria-pressed={targetOption === option.value} className={`min-h-10 rounded-lg border px-2 text-xs transition ${targetOption === option.value ? "border-stone-900 bg-stone-900 !text-white dark:border-stone-100 dark:bg-stone-100 dark:!text-stone-900" : "border-stone-200 hover:border-stone-500 dark:border-stone-700"}`} onClick={() => setTargetOption(option.value)}>
                                             {option.label}
                                         </button>
                                     ))}
-                                    <button type="button" aria-pressed={targetOption === "custom"} className={`min-h-10 rounded-lg border px-2 text-xs transition ${targetOption === "custom" ? "border-stone-900 bg-stone-900 text-white dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900" : "border-stone-200 hover:border-stone-500 dark:border-stone-700"}`} onClick={() => setTargetOption("custom")}>自定义宽高</button>
+                                    <button type="button" aria-pressed={targetOption === "custom"} className={`min-h-10 rounded-lg border px-2 text-xs transition ${targetOption === "custom" ? "border-stone-900 bg-stone-900 !text-white dark:border-stone-100 dark:bg-stone-100 dark:!text-stone-900" : "border-stone-200 hover:border-stone-500 dark:border-stone-700"}`} onClick={() => setTargetOption("custom")}>自定义宽高</button>
                                 </div>
                             </div>
                             {targetOption === "custom" ? <div className="grid grid-cols-2 gap-2"><Input type="number" min={1} max={MAX_UPSCALE_LONG_EDGE} value={customTarget.width} onChange={(event) => setCustomTarget((current) => ({ ...current, width: Number(event.target.value) || 1 }))} addonBefore="W" /><Input type="number" min={1} max={MAX_UPSCALE_LONG_EDGE} value={customTarget.height} onChange={(event) => setCustomTarget((current) => ({ ...current, height: Number(event.target.value) || 1 }))} addonBefore="H" /></div> : null}
                             {image && !canUpscale ? <div className="text-xs font-medium text-[#ef4444]">{reachedMax ? t("canvas.editors.maxReached") : validTarget ? t("canvas.editors.targetReached") : "尺寸必须在 1 到 4096 像素范围内"}</div> : null}
                         </div>
-                        {exactWidth && exactHeight ? <div className="space-y-2"><div className="font-medium opacity-75">固定尺寸处理方式</div><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={params.fit === "cover"} className={`rounded-lg border px-2 py-2 text-left text-xs ${params.fit === "cover" ? "border-stone-900 bg-stone-900 text-white dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900" : "border-stone-200 dark:border-stone-700"}`} onClick={() => setParams((current) => ({ ...current, fit: "cover" }))}><span className="block font-medium">裁剪填满</span><span className="mt-1 block opacity-70">填满画布，裁掉边缘</span></button><button type="button" aria-pressed={params.fit === "contain"} className={`rounded-lg border px-2 py-2 text-left text-xs ${params.fit === "contain" ? "border-stone-900 bg-stone-900 text-white dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900" : "border-stone-200 dark:border-stone-700"}`} onClick={() => setParams((current) => ({ ...current, fit: "contain" }))}><span className="block font-medium">透明留白</span><span className="mt-1 block opacity-70">完整保留画面</span></button></div></div> : null}
+                        {exactWidth && exactHeight ? <div className="space-y-2"><div className="font-medium opacity-75">固定尺寸处理方式</div><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={params.fit === "cover"} className={`rounded-lg border px-2 py-2 text-left text-xs ${params.fit === "cover" ? "border-stone-900 bg-stone-900 !text-white dark:border-stone-100 dark:bg-stone-100 dark:!text-stone-900" : "border-stone-200 dark:border-stone-700"}`} onClick={() => setParams((current) => ({ ...current, fit: "cover" }))}><span className="block font-medium">裁剪填满</span><span className="mt-1 block opacity-70">填满画布，裁掉边缘</span></button><button type="button" aria-pressed={params.fit === "contain"} className={`rounded-lg border px-2 py-2 text-left text-xs ${params.fit === "contain" ? "border-stone-900 bg-stone-900 !text-white dark:border-stone-100 dark:bg-stone-100 dark:!text-stone-900" : "border-stone-200 dark:border-stone-700"}`} onClick={() => setParams((current) => ({ ...current, fit: "contain" }))}><span className="block font-medium">透明留白</span><span className="mt-1 block opacity-70">完整保留画面</span></button></div></div> : null}
                         <div className="space-y-2">
                             <div className="font-medium opacity-75">{t("canvas.editors.algorithm")}</div>
                             <Segmented
