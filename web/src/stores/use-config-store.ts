@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { VOTE_API_ORIGIN, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
+import { VOTE_TEXT_ORIGIN } from "@/lib/vote-channel-presets";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -17,6 +18,8 @@ export type ChannelModel = {
 };
 
 export type ModelChannel = {
+    managedKeyId?: number;
+    keyOwnerId?: number;
     id: string;
     name: string;
     baseUrl: string;
@@ -77,7 +80,7 @@ const OPENAI_BASE_URL = "https://api.openai.com";
 export const VOTE_IMAGE_CHANNEL_ID = "vote-image";
 export const VOTE_TEXT_CHANNEL_ID = "vote-text";
 export const VOTE_IMAGE_BASE_URL = VOTE_API_ORIGIN;
-export const VOTE_TEXT_BASE_URL = "https://ai.vote520.com";
+export const VOTE_TEXT_BASE_URL = VOTE_TEXT_ORIGIN;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
@@ -302,6 +305,8 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
         apiKey: channel?.apiKey || "",
         apiFormat,
         models: normalizeChannelModels(channel?.models),
+        managedKeyId: channel?.managedKeyId,
+        keyOwnerId: channel?.keyOwnerId,
     };
 }
 

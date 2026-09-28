@@ -41,11 +41,17 @@ sanitize_origins() {
 
 CONNECT_ORIGINS=$(sanitize_origins VOTE_CONNECT_ORIGINS "${VOTE_CONNECT_ORIGINS:-}")
 MEDIA_ORIGINS=$(sanitize_origins VOTE_MEDIA_ORIGINS "${VOTE_MEDIA_ORIGINS:-}")
+FRAME_ORIGIN="${VOTE_FRAME_ORIGIN:-https://ai.vote520.com}"
+if ! printf '%s' "$FRAME_ORIGIN" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+  echo "VOTE_FRAME_ORIGIN must be one HTTPS origin without a path" >&2
+  exit 1
+fi
 
 sed -i \
   -e "s|__VOTE_IMAGE_ASSET_ORIGIN__|${ASSET_ORIGIN}|g" \
   -e "s|__VOTE_CONNECT_ORIGINS__|${CONNECT_ORIGINS}|g" \
   -e "s|__VOTE_MEDIA_ORIGINS__|${MEDIA_ORIGINS}|g" \
+  -e "s|__VOTE_FRAME_ORIGIN__|${FRAME_ORIGIN}|g" \
   /etc/nginx/snippets/vote-security-headers.conf
 
 cat > /usr/share/nginx/html/config.js <<EOF

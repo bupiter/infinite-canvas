@@ -1,15 +1,18 @@
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { changeAppLocale } from "@/i18n";
 import { usePromptSourceScheduler } from "@/hooks/use-prompt-source-scheduler";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { startVoteKeyBridge } from "@/services/vote-key-bridge";
+import { VoteStartGuide } from "./vote-start-guide";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
     const handledConfigParams = useRef(false);
     const setTheme = useThemeStore((state) => state.setTheme);
 
     usePromptSourceScheduler();
+    useLayoutEffect(() => startVoteKeyBridge(), []);
 
     useEffect(() => {
         if (handledConfigParams.current) return;
@@ -27,5 +30,5 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         if (hasForbidden) window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
     }, [setTheme]);
 
-    return <>{children}</>;
+    return <>{children}<VoteStartGuide /></>;
 }
