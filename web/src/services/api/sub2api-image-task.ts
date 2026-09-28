@@ -2,11 +2,11 @@ import axios from "axios";
 import localforage from "localforage";
 
 import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
-import { VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
+import { VOTE_API_ORIGIN, VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 import { useImageTaskProgress, type ImageTaskPhase } from "@/stores/use-image-task-progress";
 import { taskDelay, withImageTaskSlot } from "./image-task-queue";
 
-export const VOTE_IMAGE_API_ORIGIN = "https://image.vote520.com";
+export const VOTE_IMAGE_API_ORIGIN = VOTE_API_ORIGIN;
 export { VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
 const POLL_INTERVAL_MS = 3000;
 const MAX_WAIT_MS = 30 * 60 * 1000;

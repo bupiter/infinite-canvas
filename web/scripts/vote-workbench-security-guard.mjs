@@ -53,7 +53,7 @@ assert(imageApi.includes('requestSub2ApiImageTask(requestConfig, "/images/edits/
 assert(!imageApi.includes("requestVoteImage("), "Vote image requests must not blindly retry a complete generation request");
 assert(!imageApi.includes("normalizeVoteImages"), "Vote generation must preserve the original image without automatic resizing");
 assert(!imageApi.includes("isTransientImageError") && !imageApi.includes("return request();"), "Vote image failures must not resubmit the complete generation request");
-assert(configStore.includes('VOTE_IMAGE_BASE_URL = "https://image.vote520.com"') && configStore.includes('VOTE_TEXT_BASE_URL = "https://ai.vote520.com"'), "Vote image and text channels must be available by default");
+assert(query.includes('|| "https://image.vote520.com"') && query.includes('imageOriginUrl.origin !== configuredImageOrigin') && configStore.includes('VOTE_IMAGE_BASE_URL = VOTE_API_ORIGIN') && configStore.includes('VOTE_TEXT_BASE_URL = "https://ai.vote520.com"'), "Vote channels must default to production and accept only an exact build-time HTTPS origin override");
 assert(configStore.includes("createVoteImageChannel()") && configStore.includes("createVoteTextChannel()"), "persisted configurations must receive missing Vote channels without losing existing channels");
 assert(nginxHeaders.includes("https://image.vote520.com https://ai.vote520.com"), "Canvas CSP must allow both Vote image and text API origins");
 assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");
