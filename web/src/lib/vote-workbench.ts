@@ -1,6 +1,9 @@
 import type { AiConfig } from "@/stores/use-config-store";
 
-export const VOTE_API_ORIGIN = "https://image.vote520.com";
+const configuredImageOrigin = import.meta.env.VITE_VOTE_IMAGE_API_ORIGIN || "https://image.vote520.com";
+const imageOriginUrl = new URL(configuredImageOrigin);
+if (imageOriginUrl.protocol !== "https:" || imageOriginUrl.origin !== configuredImageOrigin) throw new Error("VITE_VOTE_IMAGE_API_ORIGIN must be one HTTPS origin without a path");
+export const VOTE_API_ORIGIN = imageOriginUrl.origin;
 export const VOTE_IMAGE_MODEL = "gpt-image-2";
 export const VOTE_IMAGE_MODELS = ["gpt-image-2", "gpt-image-2.5"] as const;
 export const VOTE_DATA_NOTICE_STORAGE_KEY = "infinite-canvas:vote-data-notice:v1";

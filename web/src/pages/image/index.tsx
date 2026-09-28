@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Tag, Tooltip, Typography } from "antd";
 import localforage from "localforage";
 import { saveAs } from "file-saver";
@@ -22,7 +22,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { isVoteImageRequest, listPendingImageTasks, requestEdit, requestGeneration, resumeImageTask } from "@/services/api/image";
-import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { deleteStoredImages, resolveImageUrl, uploadImage, subscribeImagePreviews, getImagePreviewRevision, previewUrlFor, ensureImagePreview } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import type { ReferenceImage } from "@/types/image";
@@ -63,7 +63,6 @@ type GenerationLog = {
     quality: string;
     status: "success" | "failed";
     images: GeneratedImage[];
-    thumbnails: string[];
 };
 
 type GenerationLogConfig = Pick<AiConfig, "model" | "imageModel" | "quality" | "size" | "count">;
@@ -97,6 +96,7 @@ export default function ImagePage() {
         }
     };
     const { t } = useTranslation();
+    useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const retryingIds = useRef(new Set<string>());
     const dragDepthRef = useRef(0);
@@ -528,7 +528,7 @@ export default function ImagePage() {
                                 >
                                     {references.map((item, index) => (
                                         <div key={item.id} className="group relative size-20 shrink-0 overflow-hidden rounded-md border border-stone-200 dark:border-stone-800">
-                                            <img src={item.dataUrl} alt={item.name} className="size-full object-cover" />
+                                            <img src={previewUrlFor(item.storageKey) || item.dataUrl} alt={item.name} className="size-full object-cover" />
                                             <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{imageReferenceLabel(index)}</span>
                                             <ReferenceOrderButtons index={index} total={references.length} onMove={(offset) => setReferences((value) => moveListItem(value, index, offset))} />
                                             <button
@@ -802,7 +802,8 @@ function LogPanel({
 
 function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: GenerationLog; selected: boolean; active: boolean; onSelectedChange: (checked: boolean) => void; onClick: () => void }) {
     const { t } = useTranslation();
-    const thumbnails = (log.thumbnails || []).filter(Boolean).slice(0, 4);
+    useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
+    const thumbnails = log.images.filter((image) => image.dataUrl).slice(0, 4);
 
     return (
         <button
@@ -817,8 +818,8 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                         <div className="truncate text-sm font-semibold leading-5">{log.title}</div>
                         {thumbnails.length ? (
                             <div className="mt-2 flex gap-1 overflow-hidden">
-                                {thumbnails.map((image, index) => (
-                                    <img key={`${log.id}-${index}`} src={image} alt="" className="size-8 shrink-0 rounded-md object-cover" />
+                                {thumbnails.map((image) => (
+                                    <img key={image.id} src={previewUrlFor(image.storageKey) || image.dataUrl} alt="" className="size-8 shrink-0 rounded-md object-cover" />
                                 ))}
                             </div>
                         ) : null}
@@ -866,16 +867,16 @@ async function readStoredLogs() {
 
 async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog> {
     const references = await Promise.all(
-        (log.references || []).map(async (item) => ({
-            ...item,
-            dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl),
-        })),
+        (log.references || []).map(async (item) => {
+            void ensureImagePreview(item.storageKey);
+            return { ...item, dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl) };
+        }),
     );
     const images = await Promise.all(
-        (log.images || []).map(async (item) => ({
-            ...item,
-            dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl),
-        })),
+        (log.images || []).map(async (item) => {
+            void ensureImagePreview(item.storageKey);
+            return { ...item, dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl) };
+        }),
     );
     const config = normalizeLogConfig(log);
     return {
@@ -895,7 +896,6 @@ async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog>
         quality: log.quality || config.quality || "",
         status: log.status || "success",
         images,
-        thumbnails: images.map((image) => image.dataUrl).filter(Boolean),
     };
 }
 
@@ -904,7 +904,6 @@ function serializeLog(log: GenerationLog): GenerationLog {
         ...log,
         references: log.references.map((item) => ({ ...item, dataUrl: item.storageKey ? "" : item.dataUrl })),
         images: log.images.map((image) => ({ ...image, dataUrl: image.storageKey ? "" : image.dataUrl })),
-        thumbnails: [],
     };
 }
 
@@ -981,6 +980,5 @@ function buildLog({
         quality: logConfig.quality,
         status,
         images,
-        thumbnails: images.map((image) => image.dataUrl).filter(Boolean),
     };
 }

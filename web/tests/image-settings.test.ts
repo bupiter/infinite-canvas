@@ -30,5 +30,6 @@ it("preserves quality and precise dimensions for other providers", async () => {
     await act(() => root!.render(React.createElement(ImageSettingsPanel, { config, onConfigChange: vi.fn(), theme: canvasThemes.light })));
     expect(container.textContent).toContain("settingsPanels.image.quality");
     expect(container.textContent).toContain("settingsPanels.image.transparent");
-    expect(container.textContent).toContain("(4k)");
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent === "4k")).toBe(true);
+    expect(container.querySelectorAll('input[type="number"]').length).toBeGreaterThanOrEqual(3);
 });
