@@ -2086,7 +2086,7 @@ function InfiniteCanvasPage() {
             setRunningNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestEdit(generationConfig, prompt, references, { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl }, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: childId, imageId: childId } }).then((items) => items[0]);
+                const image = await requestEdit(generationConfig, prompt, references, undefined, { signal: controller.signal, taskContext: { surface: "canvas", projectId, targetNodeId: childId, imageId: childId } }).then((items) => items[0]);
                 const uploaded = await uploadImage(image.dataUrl, { taskId: image.taskId, signal: controller.signal });
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
