@@ -15,6 +15,7 @@ import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent }
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
 import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { channelPresetFor, channelPresets } from "@/lib/vote-channel-presets";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -95,7 +96,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const updateChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, channels));
 
     const addChannel = () => {
-        const channel = createModelChannel({ name: t("config.channels.numberedName", { count: config.channels.length + 1 }) });
+        const channel = createModelChannel(channelPresets.image);
         updateChannels([...config.channels, channel]);
         setEditingChannelId(channel.id);
     };
@@ -110,6 +111,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
 
     const saveChannel = (channel: ModelChannel) => {
         updateChannels(config.channels.map((item) => (item.id === channel.id ? channel : item)));
+        if (channelPresetFor(channel.baseUrl) !== "custom") setConfigDialogOpen(false);
     };
 
     const testWebdav = async () => {
@@ -185,6 +187,18 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.channels"),
                         children: (
                             <div>
+                                <div className="mb-4 space-y-3 rounded-lg border border-stone-200 p-4 dark:border-stone-800">
+                                    <div className="font-semibold">新手开始：选用途 → 选密钥 → 开始创作</div>
+                                    <p className="text-sm text-stone-500">生图渠道用于生成、修改图片；文本渠道用于对话与提示词助手。连接检查不收费，实际调用模型按你的分组价格计费。</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(["image", "text"] as const).map(kind => <Button key={kind} onClick={() => {
+                                            const existing = config.channels.find(c => c.id === `vote-${kind}` || c.baseUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "") === channelPresets[kind].baseUrl.replace(/\/v1$/, ""));
+                                            if (existing) setEditingChannelId(existing.id);
+                                            else { const next = createModelChannel(channelPresets[kind]); updateChannels([...config.channels, next]); setEditingChannelId(next.id); }
+                                        }}>{kind === "image" ? "配置生图渠道" : "配置文本渠道"}</Button>)}
+                                    </div>
+                                    <details className="text-sm"><summary className="cursor-pointer">如何开始使用？</summary><ol className="mt-2 list-decimal space-y-1 pl-5"><li>直接生图：输入描述，选择生图模型，点击生成。</li><li>修改图片：上传参考图，输入修改要求，再生成。</li><li>提示词助手：先配置文本渠道，再选择文本模型。</li><li>找不到密钥：在主站“API 密钥”里选择对应分组创建，回到这里刷新。</li></ol></details>
+                                </div>
                                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
                                     <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>

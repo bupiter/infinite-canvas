@@ -39,10 +39,10 @@ const assert = (condition, message) => {
 };
 
 assert(channelEditor.includes("Input.Password") && channelEditor.includes("visibilityToggle={false}"), "API keys must remain masked with no plaintext visibility toggle");
-assert(channelEditor.includes("if (!isVoteImageBaseUrl(normalized.baseUrl))"), "Vote validation must be scoped to the Vote image origin so third-party providers remain native");
+assert(channelEditor.includes('const kind = channelPresetFor(normalized.baseUrl)') && channelEditor.includes('if (kind === "custom")'), "Vote validation must be scoped to the Vote image origin so third-party providers remain native");
 assert(channelEditor.includes("firstUseData") && channelEditor.includes("firstUseModeration") && channelEditor.includes("firstUseBilling") && channelEditor.includes("firstUsePolicy"), "first-time Vote use must disclose local data, moderation, billing, and abuse policy");
 assert(channelEditor.includes("await validateVoteImageChannel(normalized, controller.signal)"), "Vote providers must validate their key before saving");
-assert(/await validateVoteImageChannel\(normalized, controller\.signal\);[\s\S]{0,360}onSave\(/.test(channelEditor), "Vote providers must not save before validation succeeds");
+assert(/await validateVoteImageChannel\(normalized, controller\.signal\)[\s\S]{0,360}onSave\(/.test(channelEditor), "Vote providers must not save before validation succeeds");
 assert(voteValidation.includes('buildApiUrl(channel.baseUrl, "/models")'), "Vote key validation must call the provider models endpoint");
 assert(voteValidation.includes("VOTE_IMAGE_MODELS.filter((model) => models.has(model))") && voteValidation.includes('!model.startsWith("gpt-image-")'), "Vote key validation must require a supported image-only catalog");
 assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
@@ -53,7 +53,7 @@ assert(imageApi.includes('requestSub2ApiImageTask(requestConfig, "/images/edits/
 assert(!imageApi.includes("requestVoteImage("), "Vote image requests must not blindly retry a complete generation request");
 assert(!imageApi.includes("normalizeVoteImages"), "Vote generation must preserve the original image without automatic resizing");
 assert(!imageApi.includes("isTransientImageError") && !imageApi.includes("return request();"), "Vote image failures must not resubmit the complete generation request");
-assert(query.includes('|| "https://image.vote520.com"') && query.includes('imageOriginUrl.origin !== configuredImageOrigin') && configStore.includes('VOTE_IMAGE_BASE_URL = VOTE_API_ORIGIN') && configStore.includes('VOTE_TEXT_BASE_URL = "https://ai.vote520.com"'), "Vote channels must default to production and accept only an exact build-time HTTPS origin override");
+assert(query.includes('|| "https://image.vote520.com"') && query.includes('imageOriginUrl.origin !== configuredImageOrigin') && configStore.includes('VOTE_IMAGE_BASE_URL = VOTE_API_ORIGIN') && configStore.includes('VOTE_TEXT_BASE_URL = VOTE_TEXT_ORIGIN'), "Vote channels must default to production and accept only an exact build-time HTTPS origin override");
 assert(configStore.includes("createVoteImageChannel()") && configStore.includes("createVoteTextChannel()"), "persisted configurations must receive missing Vote channels without losing existing channels");
 assert(nginxHeaders.includes("https://image.vote520.com https://ai.vote520.com"), "Canvas CSP must allow both Vote image and text API origins");
 assert(imageTask.includes('payload.status === "queued" || payload.status === "processing"'), "server-queued Vote tasks must keep polling instead of failing as unknown");

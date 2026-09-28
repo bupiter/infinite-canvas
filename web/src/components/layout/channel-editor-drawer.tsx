@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { isVoteImageBaseUrl, VOTE_DATA_NOTICE_STORAGE_KEY, VOTE_IMAGE_MODEL, VOTE_IMAGE_MODELS } from "@/lib/vote-workbench";
-import { validateVoteImageChannel } from "@/services/api/vote-image-channel";
+import { validateVoteImageChannel, validateVoteTextChannel } from "@/services/api/vote-image-channel";
 import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
+import { VoteChannelConnect } from "./vote-channel-connect";
+import { channelPresetFor, channelPresets, type ChannelPreset } from "@/lib/vote-channel-presets";
 
 type ScriptTarget = { name: string; capability: ModelCapability; value: string };
 
@@ -18,6 +20,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const [selectOpen, setSelectOpen] = useState(false);
     const [scriptTarget, setScriptTarget] = useState<ScriptTarget | null>(null);
     const [saving, setSaving] = useState(false);
+    const [connectionRevision, setConnectionRevision] = useState(0);
     const validationControllerRef = useRef<AbortController | null>(null);
     const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
         { label: "OpenAI", value: "openai" },
@@ -43,6 +46,8 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     if (!draft) return null;
 
     const patch = (value: Partial<ModelChannel>) => {
+        if ("baseUrl" in value && value.baseUrl !== draft.baseUrl) value = { ...value, apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined };
+        if ("apiKey" in value && !("managedKeyId" in value)) { value = { ...value, managedKeyId: undefined, keyOwnerId: undefined }; setConnectionRevision(n => n + 1); }
         if ("baseUrl" in value || "apiKey" in value) {
             validationControllerRef.current?.abort();
             validationControllerRef.current = null;
@@ -105,7 +110,8 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
 
     const save = async () => {
         const normalized = { ...draft, name: draft.name.trim() || t("config.channels.unnamed"), baseUrl: draft.baseUrl.trim(), models: normalizeChannelModels(draft.models) };
-        if (!isVoteImageBaseUrl(normalized.baseUrl)) {
+        const kind = channelPresetFor(normalized.baseUrl);
+        if (kind === "custom") {
             onSave(normalized);
             close();
             return;
@@ -114,16 +120,16 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
             message.error(t("config.modelSelect.missingConfig"));
             return;
         }
-        if (!(await confirmVoteNotice())) return;
+        if (kind === "image" && !(await confirmVoteNotice())) return;
 
         const controller = new AbortController();
         validationControllerRef.current?.abort();
         validationControllerRef.current = controller;
         setSaving(true);
         try {
-            const supportedModels = await validateVoteImageChannel(normalized, controller.signal);
+            const supportedModels = kind === "image" ? await validateVoteImageChannel(normalized, controller.signal) : await validateVoteTextChannel(normalized, controller.signal);
             if (validationControllerRef.current !== controller) return;
-            onSave({ ...normalized, apiFormat: "openai", apiKey: normalized.apiKey.trim(), models: VOTE_IMAGE_MODELS.filter((model) => supportedModels.includes(model)).map((name) => ({ name, capability: "image" })) });
+            onSave({ ...normalized, apiFormat: "openai", apiKey: normalized.apiKey.trim(), models: supportedModels.map((name) => ({ name, capability: kind })) });
             message.success(t("voteWorkbench.connectionVerified"));
             close();
         } catch (error) {
@@ -138,6 +144,10 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     };
 
     const voteChannel = isVoteImageBaseUrl(draft.baseUrl);
+    const preset = channelPresetFor(draft.baseUrl);
+    const choosePreset = (kind: ChannelPreset) => {
+        patch(kind === "custom" ? { baseUrl: "", name: "自定义渠道", apiFormat: "openai" } : { ...channelPresets[kind], apiFormat: "openai" });
+    };
 
     return (
         <Drawer
@@ -150,12 +160,25 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 <Space>
                     <Button onClick={close}>{t("common.cancel")}</Button>
                     <Button type="primary" loading={saving} onClick={() => void save()}>
-                        {t("common.save")}
+                        {preset === "custom" ? t("common.save") : "连接并保存"}
                     </Button>
                 </Space>
             }
         >
+            <div className="mb-4 space-y-2">
+                <div className="text-sm font-semibold">1. 选择渠道用途</div>
+                <Select className="w-full" aria-label="渠道用途" value={preset} onChange={choosePreset} options={[
+                    { value: "image", label: "Vote 生图 · 生成图片、修改图片" },
+                    { value: "text", label: "Vote 文本 · 对话、提示词助手" },
+                    { value: "custom", label: "自定义 · 接入其他服务商" },
+                ]} />
+                {preset !== "custom" && <Input aria-label="自动填写的接口地址" readOnly value={draft.baseUrl} />}
+                <p className="text-xs text-stone-500">Vote 渠道自动填写接口地址。先连接生图即可开始，文本渠道可按需添加。</p>
+            </div>
+            <VoteChannelConnect key={`${draft.id}:${draft.baseUrl}:${connectionRevision}`} channel={draft} onChange={patch} />
             {voteChannel ? <Alert className="mb-4" type="info" showIcon message={t("voteWorkbench.dataNoticeTitle")} description={t("voteWorkbench.dataNotice")} /> : null}
+            <details open={preset === "custom"} className="mb-4">
+            <summary className="mb-3 cursor-pointer text-sm font-medium">高级设置 / 手动填写密钥</summary>
             <div className="grid gap-4 md:grid-cols-2">
                 <label className="block">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.name")}</span>
@@ -163,21 +186,22 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 </label>
                 <label className="block">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.protocol")}</span>
-                    <Select className="w-full" value={draft.apiFormat} options={apiFormatOptions} onChange={changeApiFormat} />
+                    <Select className="w-full" disabled={preset !== "custom"} value={draft.apiFormat} options={apiFormatOptions} onChange={changeApiFormat} />
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.baseUrl")}</span>
-                    <Input value={draft.baseUrl} onChange={(event) => patch({ baseUrl: event.target.value })} placeholder="https://api.example.com" />
+                    <Input readOnly={preset !== "custom"} value={draft.baseUrl} onChange={(event) => patch({ baseUrl: event.target.value })} placeholder="https://api.example.com/v1" />
                 </label>
                 <label className="block md:col-span-2">
-                    <span className="mb-1 block text-sm font-medium">API Key</span>
+                    <span className="mb-1 block text-sm font-medium">{preset === "custom" ? "API Key" : "手动粘贴 API Key（也可使用上方下拉框）"}</span>
                     <Input.Password visibilityToggle={false} value={draft.apiKey} onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
                 </label>
             </div>
+            </details>
 
             <div className="mt-6 mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                    <div className="text-sm font-semibold">{t("config.channelEditor.models")}</div>
+                    <div className="text-sm font-semibold">3. {t("config.channelEditor.models")}</div>
                     <div className="mt-0.5 text-xs text-stone-500">{t("config.channelEditor.modelDescription", { count: draft.models.length })}</div>
                 </div>
                 <Button type="primary" icon={<ListPlus className="size-4" />} onClick={() => setSelectOpen(true)}>
