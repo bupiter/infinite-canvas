@@ -156,11 +156,12 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
             title={t("config.channelEditor.title")}
             onClose={close}
             styles={{ body: { paddingTop: 16 } }}
+            footer={<Button type="primary" block size="large" loading={saving} onClick={() => void save()}>{preset === "custom" ? t("common.save") : "连接并开始使用"}</Button>}
             extra={
                 <Space>
                     <Button onClick={close}>{t("common.cancel")}</Button>
                     <Button type="primary" loading={saving} onClick={() => void save()}>
-                        {preset === "custom" ? t("common.save") : "连接并保存"}
+                        {preset === "custom" ? t("common.save") : "连接并开始使用"}
                     </Button>
                 </Space>
             }

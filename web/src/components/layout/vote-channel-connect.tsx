@@ -43,7 +43,7 @@ export function VoteChannelConnect({ channel, onChange }: { channel: ModelChanne
             }
             if (controller.signal.aborted || getVoteKeyOwner() !== selected.userId) return;
             onChange({ apiKey: selected.key, managedKeyId: selected.keyId, keyOwnerId: selected.userId, apiFormat: "openai", models: names.map(name => ({ name, capability: kind })) });
-            setStatus(`连接通过，已读取 ${names.length} 个${kind === "image" ? "生图" : "文本"}模型。点击右上角“连接并保存”即可使用。`);
+            setStatus(`连接通过，已读取 ${names.length} 个${kind === "image" ? "生图" : "文本"}模型。点击底部“连接并开始使用”即可。`);
         } catch (error) {
             if (!controller.signal.aborted) setStatus(error instanceof Error && !axios.isAxiosError(error) ? error.message : "连接失败，请检查密钥、分组权限及网络后重新选择。");
         } finally { if (!controller.signal.aborted) setLoading(false); }
