@@ -10,19 +10,19 @@ import { ImageSettingsPanel } from "@/components/image-settings-panel";
 const container = document.createElement("div");
 let root: ReturnType<typeof createRoot> | undefined;
 afterEach(async () => { if (root) await act(() => root!.unmount()); root = undefined; });
-it("shows only supported Vote controls and forwards the selected composition", async () => {
+it("hides unsupported parameter controls for a fixed-output channel", async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const update = vi.fn();
-    const config = { model: "gpt-image-2", baseUrl: "https://image.vote520.com", quality: "high", size: "3840x2160", count: "10" } as AiConfig;
+    const config = { model: "gpt-image-2", baseUrl: "https://image.vote520.com", quality: "high", size: "3840x2160", count: "10", imageParameterMode: "fixed" } as AiConfig;
     root = createRoot(container);
     await act(() => root!.render(React.createElement(ImageSettingsPanel, { config, onConfigChange: update, theme: canvasThemes.light })));
-    expect(container.textContent).toContain("先生成并保存原图");
+    expect(container.textContent).toContain("固定输出");
     expect(container.textContent).not.toContain("settingsPanels.image.quality");
     expect(container.textContent).not.toContain("settingsPanels.image.transparent");
     expect(container.textContent).not.toContain("(4k)");
-    const portrait = [...container.querySelectorAll("button")].find((button) => button.textContent === "9:16")!;
-    await act(() => portrait.click());
-    expect(update).toHaveBeenCalledWith("size", "9:16");
+    expect([...container.querySelectorAll("button")].some(button => button.textContent === "9:16")).toBe(false);
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
+
 });
 it("preserves quality and precise dimensions for other providers", async () => {
     const config = { model: "other-image", baseUrl: "https://fixture.invalid", quality: "high", size: "1024x1024", count: "1" } as AiConfig;
@@ -32,4 +32,17 @@ it("preserves quality and precise dimensions for other providers", async () => {
     expect(container.textContent).toContain("settingsPanels.image.transparent");
     expect([...container.querySelectorAll("button")].some((button) => button.textContent === "4k")).toBe(true);
     expect(container.querySelectorAll('input[type="number"]').length).toBeGreaterThanOrEqual(3);
+});
+
+it("restores official controls and exact dimensions for the native route", async () => {
+    const update = vi.fn();
+    const config = { model: "gpt-image-2", baseUrl: "https://image.vote520.com", quality: "high", size: "3840x2160", count: "1", imageParameterMode: "standard" } as AiConfig;
+    root = createRoot(container);
+    await act(() => root!.render(React.createElement(ImageSettingsPanel, { config, onConfigChange: update, theme: canvasThemes.light })));
+    expect(container.textContent).toContain("settingsPanels.image.quality");
+    expect(container.textContent).toContain("settingsPanels.image.transparent");
+    const portrait = [...container.querySelectorAll("button")].find(button => button.textContent === "9:16")!;
+    await act(() => portrait.click());
+    expect(update).toHaveBeenCalledWith("size", "2160x3840");
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(3);
 });

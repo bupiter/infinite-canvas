@@ -46,8 +46,8 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     if (!draft) return null;
 
     const patch = (value: Partial<ModelChannel>) => {
-        if ("baseUrl" in value && value.baseUrl !== draft.baseUrl) value = { ...value, apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined };
-        if ("apiKey" in value && !("managedKeyId" in value)) { value = { ...value, managedKeyId: undefined, keyOwnerId: undefined }; setConnectionRevision(n => n + 1); }
+        if ("baseUrl" in value && value.baseUrl !== draft.baseUrl) value = { ...value, apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined, imageParameterMode: undefined, imageGroupId: undefined };
+        if ("apiKey" in value && !("managedKeyId" in value)) { value = { ...value, managedKeyId: undefined, keyOwnerId: undefined, imageParameterMode: undefined, imageGroupId: undefined }; setConnectionRevision(n => n + 1); }
         if ("baseUrl" in value || "apiKey" in value) {
             validationControllerRef.current?.abort();
             validationControllerRef.current = null;
@@ -118,6 +118,10 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         }
         if (!normalized.apiKey.trim()) {
             message.error(t("config.modelSelect.missingConfig"));
+            return;
+        }
+        if (kind === "image" && !normalized.imageParameterMode) {
+            message.error("请重新选择生图 Key；手动接入需在高级设置中选择图像参数模式。");
             return;
         }
         if (kind === "image" && !(await confirmVoteNotice())) return;
@@ -197,6 +201,13 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                     <span className="mb-1 block text-sm font-medium">{preset === "custom" ? "API Key" : "手动粘贴 API Key（也可使用上方下拉框）"}</span>
                     <Input.Password visibilityToggle={false} value={draft.apiKey} onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
                 </label>
+                {preset === "image" && <label className="block md:col-span-2">
+                    <span className="mb-1 block text-sm font-medium">图像参数模式{draft.managedKeyId ? "（由分组自动确定）" : "（按服务商能力选择）"}</span>
+                    <Select className="w-full" disabled={Boolean(draft.managedKeyId)} value={draft.imageParameterMode} placeholder="请选择参数模式" options={[
+                        { value: "standard", label: "原生 / 标准参数：画质、尺寸和透明背景" },
+                        { value: "fixed", label: "固定输出：尺寸和画质由上游处理" },
+                    ]} onChange={mode => patch({ imageParameterMode: mode })} />
+                </label>}
             </div>
             </details>
 

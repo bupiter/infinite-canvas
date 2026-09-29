@@ -4,6 +4,7 @@ import axios from "axios";
 import { channelPresetFor } from "@/lib/vote-channel-presets";
 import { type ModelChannel } from "@/stores/use-config-store";
 import { validateVoteImageChannel, validateVoteTextChannel } from "@/services/api/vote-image-channel";
+import { imageModeForGroup } from "@/services/api/vote-image-profile";
 import { getVoteKeyOwner, requestVoteKeyBridge, subscribeVoteKeyOwner, voteAccountOrigin, type VoteKeyChoice } from "@/services/vote-key-bridge";
 
 export function VoteChannelConnect({ channel, onChange }: { channel: ModelChannel; onChange: (patch: Partial<ModelChannel>) => void }) {
@@ -15,7 +16,7 @@ export function VoteChannelConnect({ channel, onChange }: { channel: ModelChanne
     const operation = useRef<AbortController | null>(null);
     const kind = channelPresetFor(channel.baseUrl);
     useEffect(() => {
-        if (channel.managedKeyId && channel.keyOwnerId !== owner) onChange({ apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined });
+        if (channel.managedKeyId && channel.keyOwnerId !== owner) onChange({ apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined, imageParameterMode: undefined, imageGroupId: undefined });
     }, [owner]);
     useEffect(() => {
         operation.current?.abort(); setChoices([]); setStatus(""); setLoading(false);
@@ -31,9 +32,9 @@ export function VoteChannelConnect({ channel, onChange }: { channel: ModelChanne
         if (kind === "custom") return;
         operation.current?.abort(); const controller = new AbortController(); operation.current = controller;
         setLoading(true); setStatus("正在验证密钥并读取模型，不会产生生图费用…");
-        onChange({ apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined });
+        onChange({ apiKey: "", models: [], managedKeyId: undefined, keyOwnerId: undefined, imageParameterMode: undefined, imageGroupId: undefined });
         try {
-            const selected = await requestVoteKeyBridge<{ key: string; keyId: number; userId: number }>("select", kind, controller.signal, keyId);
+            const selected = await requestVoteKeyBridge<{ key: string; keyId: number; userId: number; groupId?: number }>("select", kind, controller.signal, keyId);
             if (controller.signal.aborted) return;
             const candidate = { ...channel, apiKey: selected.key, apiFormat: "openai" as const };
             let names: string[];
@@ -41,8 +42,10 @@ export function VoteChannelConnect({ channel, onChange }: { channel: ModelChanne
             else {
                 names = await validateVoteTextChannel(candidate, controller.signal);
             }
+            const imageParameterMode = kind === "image" ? await imageModeForGroup(selected.groupId) : undefined;
+            if (kind === "image" && !imageParameterMode) throw new Error("该生图分组还未配置参数模式，请联系站长。");
             if (controller.signal.aborted || getVoteKeyOwner() !== selected.userId) return;
-            onChange({ apiKey: selected.key, managedKeyId: selected.keyId, keyOwnerId: selected.userId, apiFormat: "openai", models: names.map(name => ({ name, capability: kind })) });
+            onChange({ apiKey: selected.key, managedKeyId: selected.keyId, keyOwnerId: selected.userId, apiFormat: "openai", imageParameterMode, imageGroupId: kind === "image" ? selected.groupId : undefined, models: names.map(name => ({ name, capability: kind })) });
             setStatus(`连接通过，已读取 ${names.length} 个${kind === "image" ? "生图" : "文本"}模型。点击底部“连接并开始使用”即可。`);
         } catch (error) {
             if (!controller.signal.aborted) setStatus(error instanceof Error && !axios.isAxiosError(error) ? error.message : "连接失败，请检查密钥、分组权限及网络后重新选择。");

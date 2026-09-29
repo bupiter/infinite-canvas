@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
+import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaRatioOptions, mediaScaleOptions, readMediaDimensions } from "@/lib/media-size";
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { isVoteImageBaseUrl } from "@/lib/vote-workbench";
-import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaRatioOptions, mediaScaleOptions, readMediaDimensions } from "@/lib/media-size";
+import { imageParameterMode } from "@/services/api/vote-image-profile";
 
 const qualityOptions = [
     { value: "auto", labelKey: "auto" },
@@ -34,6 +35,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const { t } = useTranslation();
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
     const quality = config.quality || "auto";
+    const mode = imageParameterMode(config);
     const voteImage = isVoteImageBaseUrl(resolveModelRequestConfig(config, config.model || config.imageModel).baseUrl);
     const count = Math.max(1, Math.min(maxCount, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
@@ -43,7 +45,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const dimensions = readMediaDimensions(activeSize, selectedScale, selectedRatio);
     const applySize = (scale: string, ratio: string) => onConfigChange("size", computeMediaSize(scale, ratio));
     const selectScale = (scale: string) => applySize(scale, selectedRatio === "auto" ? "1:1" : selectedRatio);
-    const selectRatio = (ratio: string) => voteImage ? onConfigChange("size", ratio) : applySize(selectedScale, ratio);
+    const selectRatio = (ratio: string) => applySize(selectedScale, ratio);
     const updateDimension = (key: "width" | "height", value: number | null) => {
         const next = Math.max(1, Math.floor(value || dimensions[key] || 1024));
         const width = key === "width" ? next : dimensions.width;
@@ -63,7 +65,9 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.image.title")}</div> : null}
-                {voteImage ? <p className="text-xs leading-5" style={{ color: theme.node.muted }}>先生成并保存原图；质量由当前渠道固定。构图比例是偏好，实际尺寸以生成结果为准。超分渠道使用固定输出尺寸；需要其他尺寸时，可在结果上选择放大导出。</p> : <div className="space-y-2.5">
+                {mode !== "standard" && <p className="text-xs leading-5" style={{ color: theme.node.muted }}>{mode === "fixed" ? "此渠道由上游固定输出图片，实际尺寸以返回结果为准。这里仅设置生成张数；需要调整成品尺寸时，可使用结果菜单中的本地放大导出。" : "请先在渠道设置中重新连接生图 Key；手动接入请先选择图像参数模式。"}</p>}
+                {mode === "standard" && <>
+                <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
                         {qualityOptions.map((item) => (
@@ -72,8 +76,8 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                             </OptionPill>
                         ))}
                     </div>
-                </div>}
-                {!voteImage && <><div className="space-y-2.5">
+                </div>
+                <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.size")}</SettingTitle>
                         <div className="flex items-center gap-2">
@@ -100,7 +104,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                             </OptionPill>
                         ))}
                     </div>
-                </div></>}
+                </div>
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.aspectRatio")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
@@ -119,7 +123,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         ))}
                     </div>
                 </div>
-                {!voteImage && <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.transparent")}</SettingTitle>
                         <div className="text-xs" style={{ color: theme.node.muted, opacity: 0.75 }}>
@@ -129,10 +133,11 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     <span onMouseDown={(event) => event.stopPropagation()}>
                         <Switch size="small" checked={transparentBackground} onChange={(checked) => onConfigChange("background", checked ? "transparent" : "")} />
                     </span>
-                </div>}
+                </div>
+                </>}
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.count")}</SettingTitle>
-                    {voteImage && <p className="text-xs" style={{ color: theme.node.muted }}>多张图片会自动排队。关闭页面后，重新打开原页面可继续处理。</p>}
+                    {voteImage && <p className="text-xs" style={{ color: theme.node.muted }}>多张图片逐张排队；已提交任务可在重新打开原页面后继续获取。</p>}
                     <div className="grid grid-cols-4 gap-2.5">
                         {Array.from({ length: quickCount }, (_, index) => index + 1).map((value) => (
                             <OptionPill key={value} selected={count === value} theme={theme} onClick={() => onConfigChange("count", String(value))}>

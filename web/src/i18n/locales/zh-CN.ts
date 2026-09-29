@@ -656,7 +656,7 @@ export default {
     },
     voteWorkbench: {
         dataNoticeTitle: "Vote 生图渠道说明",
-        dataNotice: "API Key 和渠道配置仅保存在当前浏览器。保存 image.vote520.com 渠道前会验证 Key，并确认该 Key 只开放 gpt-image-2。",
+        dataNotice: "API Key 和渠道配置仅保存在当前浏览器。保存 image.vote520.com 渠道前会验证 Key，并确认该 Key 属于受支持的图片专用分组。",
         connectionVerified: "Vote 生图渠道验证通过并已保存",
         authenticationFailed: "Key 无效或已失效，请重新创建生图专用 Key",
         groupNotImageOnly: "该 Key 需要属于生图分组，并提供已接通的 gpt-image-2 模型",

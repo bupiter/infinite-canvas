@@ -23,9 +23,9 @@ it("opens the real workbench with the default Vote channel and supported control
     const root = createRoot(container);
     try {
         await act(() => root.render(React.createElement(MemoryRouter, {}, React.createElement(QueryClientProvider, { client: new QueryClient() }, React.createElement(ConfigProvider, {}, React.createElement(App, {}, React.createElement(ImagePage)))))));
-        await vi.waitFor(() => expect(container.textContent).toContain("先生成并保存原图"));
+        await vi.waitFor(() => expect(container.textContent).toContain("请先在渠道设置中重新连接生图 Key"));
         expect(container.textContent).toContain("gpt-image-2");
-        expect(container.textContent).toContain("多张图片会自动排队");
+        expect(container.textContent).toContain("多张图片逐张排队");
         expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
     } finally {
         await act(() => root.unmount());

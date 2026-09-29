@@ -26,10 +26,11 @@ function Wrapper({ kind }: { kind: "image" | "text" }) {
 beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     bridge.owner = 7;
-    bridge.request.mockReset().mockImplementation(async action => action === "list" ? { keys: [{ id: 3, name: "我的密钥", group: "分组", suffix: "test", reason: "" }, { id: 4, name: "旧密钥", group: "分组", suffix: "xxxx", reason: "已过期" }] } : { key: "sk-fixture-only", keyId: 3, userId: 7 });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ version: 1, api_origin: "https://image.vote520.com", groups: { "34": "standard", "21": "fixed" } }))));
+    bridge.request.mockReset().mockImplementation(async action => action === "list" ? { keys: [{ id: 3, name: "我的密钥", group: "分组", suffix: "test", reason: "" }, { id: 4, name: "旧密钥", group: "分组", suffix: "xxxx", reason: "已过期" }] } : { key: "sk-fixture-only", keyId: 3, userId: 7, groupId: 34 });
     container = document.createElement("div"); root = createRoot(container);
 });
-afterEach(async () => { await act(() => root.unmount()); vi.restoreAllMocks(); });
+afterEach(async () => { await act(() => root.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it.each(["image", "text"] as const)("selects a %s key and reads models without a paid request", async kind => {
     const model = kind === "image" ? "gpt-image-2" : "gpt-6-astra";
     const get = vi.spyOn(axios, "get").mockResolvedValue({ data: { data: [{ id: model }] } });

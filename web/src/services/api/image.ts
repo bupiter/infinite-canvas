@@ -211,48 +211,15 @@ function resolveRequestSize(quality: string | undefined, size: string) {
     throw new Error(apiText("invalidImageSizeFormat"));
 }
 
-export function resolveVoteImageRequestPlan(size: string) {
-    const outputSize = resolveRequestSize(undefined, size);
-    if (!outputSize) return { sourceSize: undefined, outputSize: undefined, aspectRatio: undefined, shouldResize: false };
-    const output = parseImageDimensions(outputSize);
-    if (!output) throw new Error(apiText("invalidImageSizeFormat"));
-    const requestedRatio = size.trim().includes(":") ? parseImageRatio(size.trim()) : output;
-    const aspectRatio = reduceRatio(requestedRatio.width, requestedRatio.height);
-    return {
-        sourceSize: voteSourceSize(aspectRatio, output.width, output.height),
-        outputSize,
-        aspectRatio,
-        shouldResize: Math.max(output.width, output.height) >= 2048,
-    };
-}
-
-function reduceRatio(width: number, height: number) {
-    let a = width;
-    let b = height;
-    while (b) [a, b] = [b, a % b];
-    return `${width / a}:${height / a}`;
-}
-
-function voteSourceSize(aspectRatio: string, width: number, height: number) {
-    const presets: Record<string, string> = {
-        "1:1": "1254x1254",
-        "3:2": "1536x1024",
-        "2:3": "1024x1536",
-        "4:3": "1296x976",
-        "3:4": "976x1296",
-        "16:9": "1248x704",
-        "9:16": "704x1248",
-    };
-    return presets[aspectRatio] || resolveSize(undefined, `${width}:${height}`);
-}
-
-export function withVoteImageComposition(prompt: string, aspectRatio: string | undefined) {
-    if (!aspectRatio) return prompt;
-    const { width, height } = parseRatioValue(aspectRatio);
-    const orientation = width === height ? "square" : width > height ? "horizontal landscape" : "vertical portrait";
-    const forbidden = width === height ? "horizontal, landscape, vertical, or portrait" : width > height ? "portrait, vertical, or square" : "landscape, horizontal, or square";
-    const extension = width === height ? "Fill the square canvas with a balanced composition." : width > height ? "Extend meaningful scene content across the full left and right sides." : "Extend meaningful scene content across the full top and bottom sides.";
-    return `Create a strictly ${orientation} image with a ${aspectRatio} composition. The canvas must follow ${aspectRatio}. Do not create a ${forbidden} image. ${extension}\n\n${prompt}`;
+// Keep the official parameter normalization; only fixed-output channels use
+// the provider defaults already verified for that route. No local resizing here.
+function voteImageParameters(config: AiConfig, mode: AiConfig["imageParameterMode"]) {
+    if (!mode) throw new Error("请重新连接生图渠道，确认原生或固定输出参数模式后再生成。");
+    if (mode === "fixed") return { quality: "low", size: "1024x1024" };
+    const quality = normalizeQuality(config.quality);
+    const size = resolveRequestSize(quality, config.size);
+    const background = normalizeBackground(config.background);
+    return { ...(quality ? { quality } : {}), ...(size ? { size } : {}), ...(background ? { background } : {}) };
 }
 
 function resolveGeminiImageConfig(config: AiConfig) {
@@ -781,14 +748,13 @@ export type GeneratedImageResult = { id: string; dataUrl: string; taskId?: strin
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions): Promise<GeneratedImageResult[]> {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     if (isVoteImageGateway(requestConfig)) {
-        const requestPlan = resolveVoteImageRequestPlan(config.size);
+        const parameters = voteImageParameters(config, requestConfig.imageParameterMode);
         try {
             const payload = await requestSub2ApiImageTask(requestConfig, "/images/generations/async", {
                 model: requestConfig.model || VOTE_IMAGE_MODEL,
-                prompt: withVoteImageComposition(withSystemPrompt(requestConfig, prompt), requestPlan.aspectRatio),
+                prompt: withSystemPrompt(requestConfig, prompt),
                 n: 1,
-                quality: "low",
-                ...(requestPlan.sourceSize ? { size: requestPlan.sourceSize } : {}),
+                ...parameters,
                 response_format: "b64_json",
                 output_format: IMAGE_OUTPUT_FORMAT,
             }, { signal: options?.signal, context: options?.taskContext, requestedSize: config.size });
@@ -862,15 +828,14 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     if (isVoteImageGateway(requestConfig)) {
         if (mask) throw new Error(apiText("maskModelUnsupported"));
-        const requestPlan = resolveVoteImageRequestPlan(config.size);
+        const parameters = voteImageParameters(config, requestConfig.imageParameterMode);
         const formData = new FormData();
         formData.set("model", requestConfig.model || VOTE_IMAGE_MODEL);
-        formData.set("prompt", withVoteImageComposition(withSystemPrompt(requestConfig, requestPrompt), requestPlan.aspectRatio));
+        formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
         formData.set("n", "1");
-        formData.set("quality", "low");
+        Object.entries(parameters).forEach(([name, value]) => { if (value) formData.set(name, value); });
         formData.set("response_format", "b64_json");
         formData.set("output_format", IMAGE_OUTPUT_FORMAT);
-        if (requestPlan.sourceSize) formData.set("size", requestPlan.sourceSize);
         const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
         files.forEach((file) => formData.append("image", file));
         try {

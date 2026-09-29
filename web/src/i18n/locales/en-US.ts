@@ -656,7 +656,7 @@ export default {
     },
     voteWorkbench: {
         dataNoticeTitle: "Vote image provider notice",
-        dataNotice: "The API key and provider settings are stored only in this browser. Before an image.vote520.com provider is saved, its key is verified and must expose only gpt-image-2.",
+        dataNotice: "The API key and provider settings are stored only in this browser. Before an image.vote520.com provider is saved, its key is verified against the supported image-only catalog.",
         connectionVerified: "The Vote image provider was verified and saved",
         authenticationFailed: "This key is invalid or expired. Create a new image-only key.",
         groupNotImageOnly: "This key must belong to an image-only group that provides the supported gpt-image-2 model.",
