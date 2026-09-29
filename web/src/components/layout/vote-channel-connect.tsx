@@ -43,7 +43,7 @@ export function VoteChannelConnect({ channel, onChange }: { channel: ModelChanne
                 names = await validateVoteTextChannel(candidate, controller.signal);
             }
             const imageParameterMode = kind === "image" ? await imageModeForGroup(selected.groupId) : undefined;
-            if (kind === "image" && !imageParameterMode) throw new Error("该生图分组还未配置参数模式，请联系站长。");
+            if (kind === "image" && !imageParameterMode) throw new Error(selected.groupId === undefined ? "请刷新整个主站页面后再连接，当前页面仍在使用旧版接入代码。" : "该生图分组还未配置参数模式，请联系站长。");
             if (controller.signal.aborted || getVoteKeyOwner() !== selected.userId) return;
             onChange({ apiKey: selected.key, managedKeyId: selected.keyId, keyOwnerId: selected.userId, apiFormat: "openai", imageParameterMode, imageGroupId: kind === "image" ? selected.groupId : undefined, models: names.map(name => ({ name, capability: kind })) });
             setStatus(`连接通过，已读取 ${names.length} 个${kind === "image" ? "生图" : "文本"}模型。点击底部“连接并开始使用”即可。`);

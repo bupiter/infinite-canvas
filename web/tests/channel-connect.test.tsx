@@ -52,3 +52,13 @@ it("rejects credential-bearing URLs and lookalike provider addresses", () => {
     expect(channelPresetFor("https://ai.vote520.com")).toBe("text");
     for (const url of ["https://image.vote520.com.evil.invalid/v1", "https://user:pass@image.vote520.com/v1", "https://image.vote520.com/v1?token=test", "http://image.vote520.com"]) expect(channelPresetFor(url)).toBe("custom");
 });
+
+it("explains a stale host page instead of saving an image channel with an unknown mode", async () => {
+    bridge.request.mockImplementation(async action => action === "list" ? { keys: [{ id: 3, name: "我的密钥", group: "分组", suffix: "test", reason: "" }] } : { key: "sk-fixture-only", keyId: 3, userId: 7 });
+    vi.spyOn(axios, "get").mockResolvedValue({ data: { data: [{ id: "gpt-image-2" }] } });
+    await act(async () => root.render(<Wrapper kind="image" />));
+    const select = container.querySelector("select")!;
+    await act(async () => { select.value = "3"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(container.textContent).toContain("刷新整个主站页面");
+    expect(saved.apiKey).toBe(""); expect(saved.imageParameterMode).toBeUndefined();
+});
