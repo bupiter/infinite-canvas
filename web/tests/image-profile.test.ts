@@ -20,3 +20,9 @@ it("distinguishes the same model through its selected channel", async () => {
     expect(imageParameterMode({ ...defaultConfig, channels, model: "native::gpt-image-2" })).toBe("standard");
     expect(imageParameterMode({ ...defaultConfig, channels, model: "fixed::gpt-image-2" })).toBe("fixed");
 });
+it.each(["manual", "managed"])("does not re-add unauthorized image models to a connected %s channel on reload", async kind => {
+    const { defaultConfig, createModelChannel, normalizeConfigState } = await import("@/stores/use-config-store");
+    const channel = createModelChannel({ id: "native", baseUrl: "https://image.vote520.com", apiKey: kind === "manual" ? "fixture-only" : "", managedKeyId: kind === "managed" ? 3 : undefined, models: [{ name: "gpt-image-2", capability: "image" }] });
+    const restored = normalizeConfigState({ ...defaultConfig, channels: [channel] }, undefined);
+    expect(restored.config.channels.find(c => c.id === "native")!.models.map(m => m.name)).toEqual(["gpt-image-2"]);
+});

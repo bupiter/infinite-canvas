@@ -455,7 +455,7 @@ function normalizeChannels(config: AiConfig) {
             models: normalizeChannelModels(channel.models),
         }),
     );
-    channels = channels.map((channel) => sameOrigin(channel.baseUrl, VOTE_IMAGE_BASE_URL) ? { ...channel, models: normalizeChannelModels([...channel.models, ...VOTE_IMAGE_MODELS]) } : channel);
+    channels = channels.map((channel) => sameOrigin(channel.baseUrl, VOTE_IMAGE_BASE_URL) && !channel.apiKey && !channel.managedKeyId ? { ...channel, models: normalizeChannelModels([...channel.models, ...VOTE_IMAGE_MODELS]) } : channel);
     if (!channels.length) {
         channels.push(
             createModelChannel({

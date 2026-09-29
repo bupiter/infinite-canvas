@@ -1,6 +1,7 @@
 import { useConfigStore } from "@/stores/use-config-store";
 import { channelPresetFor } from "@/lib/vote-channel-presets";
 import { imageModeForGroup } from "@/services/api/vote-image-profile";
+import { validateVoteImageChannel } from "@/services/api/vote-image-channel";
 
 const protocol = "vote-canvas-keys-v1";
 export type VoteChannelKind = "image" | "text";
@@ -55,9 +56,10 @@ export function startVoteKeyBridge() {
                 const selected = await requestVoteKeyBridge<{ key: string; groupId?: number }>("select", kind, signal, channel.managedKeyId);
                 const imageParameterMode = kind === "image" ? await imageModeForGroup(selected.groupId) : undefined;
                 if (kind === "image" && !imageParameterMode) continue;
+                const supported = kind === "image" ? await validateVoteImageChannel({ ...channel, apiKey: selected.key }, signal) : undefined;
                 if (signal.aborted || owner !== currentOwner) return;
                 const store = useConfigStore.getState();
-                store.updateConfig("channels", store.config.channels.map(c => c.id === channel.id && c.baseUrl === channel.baseUrl && c.managedKeyId === channel.managedKeyId && c.keyOwnerId === currentOwner ? { ...c, apiKey: selected.key, imageParameterMode, imageGroupId: kind === "image" ? selected.groupId : undefined } : c));
+                store.updateConfig("channels", store.config.channels.map(c => c.id === channel.id && c.baseUrl === channel.baseUrl && c.managedKeyId === channel.managedKeyId && c.keyOwnerId === currentOwner ? { ...c, apiKey: selected.key, imageParameterMode, imageGroupId: kind === "image" ? selected.groupId : undefined, models: supported ? supported.map(name => ({ ...c.models.find(model => model.name === name), name, capability: "image" as const })) : c.models } : c));
             } catch { /* Keep the key cleared; the editor provides a manual reconnect action. */ }
         }
     };
