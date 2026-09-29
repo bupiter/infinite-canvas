@@ -5,6 +5,7 @@ import localforage from "localforage";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
+import { imageParameterMode } from "@/services/api/vote-image-profile";
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { ImageTaskStatus } from "@/components/image-task-status";
 import { useImageThumbnail } from "@/hooks/use-image-thumbnail";
@@ -547,7 +548,7 @@ export default function ImagePage() {
 
                             <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm dark:border-stone-800 dark:bg-stone-900 sm:hidden">
                                 <span className="truncate text-stone-500 dark:text-stone-400">
-                                    {modelOptionLabel(effectiveConfig, model)} · {isVoteImageRequest({ ...effectiveConfig, model }) ? "原图 · 构图偏好" : `${effectiveConfig.size} · ${effectiveConfig.quality}`}
+                                    {modelOptionLabel(effectiveConfig, model)} · {imageParameterMode({ ...effectiveConfig, model }) === "fixed" ? "固定输出 · 跟随上游" : `${effectiveConfig.size} · ${effectiveConfig.quality}`}
                                 </span>
                                 <Button size="small" type="text" icon={<SlidersHorizontal className="size-4" />} onClick={() => setSettingsOpen(true)}>
                                     {t("workbench.adjust")}

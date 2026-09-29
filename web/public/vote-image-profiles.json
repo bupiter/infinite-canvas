@@ -1,0 +1,8 @@
+{
+    "version": 1,
+    "api_origin": "https://image.vote520.com",
+    "groups": {
+        "21": "fixed",
+        "34": "standard"
+    }
+}

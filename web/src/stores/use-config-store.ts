@@ -18,6 +18,8 @@ export type ChannelModel = {
 };
 
 export type ModelChannel = {
+    imageParameterMode?: "standard" | "fixed";
+    imageGroupId?: number;
     managedKeyId?: number;
     keyOwnerId?: number;
     id: string;
@@ -29,6 +31,7 @@ export type ModelChannel = {
 };
 
 export type AiConfig = {
+    imageParameterMode?: "standard" | "fixed";
     channelMode: "remote" | "local";
     baseUrl: string;
     apiKey: string;
@@ -307,6 +310,8 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
         models: normalizeChannelModels(channel?.models),
         managedKeyId: channel?.managedKeyId,
         keyOwnerId: channel?.keyOwnerId,
+        imageParameterMode: channel?.imageParameterMode === "standard" || channel?.imageParameterMode === "fixed" ? channel.imageParameterMode : undefined,
+        imageGroupId: channel?.imageGroupId,
     };
 }
 
@@ -427,6 +432,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         baseUrl: channel?.baseUrl || "",
         apiKey: channel?.apiKey || "",
         apiFormat: channel?.apiFormat || config.apiFormat,
+        imageParameterMode: channel?.imageParameterMode,
     };
 }
 

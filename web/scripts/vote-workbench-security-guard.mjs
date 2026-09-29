@@ -46,8 +46,8 @@ assert(/await validateVoteImageChannel\(normalized, controller\.signal\)[\s\S]{0
 assert(voteValidation.includes('buildApiUrl(channel.baseUrl, "/models")'), "Vote key validation must call the provider models endpoint");
 assert(voteValidation.includes("VOTE_IMAGE_MODELS.filter((model) => models.has(model))") && voteValidation.includes('!model.startsWith("gpt-image-")'), "Vote key validation must require a supported image-only catalog");
 assert(voteValidation.includes("signal,"), "Vote validation must remain abortable when credentials change");
-assert(imageApi.includes('quality: "low"'), "Vote image generation must use the economical 1K upstream quality");
-assert(imageApi.includes("withVoteImageComposition") && imageApi.includes('"16:9": "1248x704"'), "Vote image generation must inject the tested composition ratio and use a matching 1K source size");
+assert(imageApi.includes('if (mode === "fixed")') && imageApi.includes("normalizeQuality(config.quality)"), "Native parameters must follow the selection; only fixed-output profiles may use provider defaults");
+assert(!imageApi.includes("withVoteImageComposition") && !imageApi.includes("voteSourceSize"), "Image requests must not inject legacy composition instructions or replace native dimensions");
 assert(imageApi.includes('requestSub2ApiImageTask(requestConfig, "/images/generations/async"'), "Vote image generation must use async task submission");
 assert(imageApi.includes('requestSub2ApiImageTask(requestConfig, "/images/edits/async"'), "Vote image editing must use async task submission");
 assert(!imageApi.includes("requestVoteImage("), "Vote image requests must not blindly retry a complete generation request");
